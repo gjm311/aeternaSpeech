@@ -12,11 +12,14 @@ import os
 from CAE import CAEn
 from RAE import RAEn
 from scipy.io.wavfile import read
+import scipy
 import torch
 from librosa.feature import melspectrogram
 import pywt
+import scaleogram as scg
 import numpy as np
 import warnings
+warnings.filterwarnings("ignore", message="WavFileWarning: Chunk (non-data) not understood, skipping it.")
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -24,7 +27,7 @@ import scipy.stats as st
 
 class AEspeech:
 
-    def __init__(self, model, units, fs=16000,nmels=512):
+    def __init__(self,model,units,fs=16000,nmels=512,waveletype='morl'):
         """
         Feature extraction from speech signals based on representation learning strategies using convolutional and recurrent autoencoders
         :param model: type of autoencoder to extract the features from ('CAE': convolutional autoencoders, 'RAE': recurrent autoencoder)
@@ -38,6 +41,8 @@ class AEspeech:
         self.max_scaler=6.8561997
         self.fs=fs
         self.nmels=nmels
+        self.waveletype = waveletype
+        
         if model=="CAE":
             self.AE=CAEn(units)
             if torch.cuda.is_available():
@@ -63,24 +68,24 @@ class AEspeech:
         Compute the tensor of Mel-scale spectrograms to be used as input for the autoencoders from a wav file
         :param wav_file: *.wav file with a sampling frequency of 16kHz
         :returns: Pytorch tensor (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of Mel frequencies (128), T: time steps (126)
-        """
+        """        
+        
         NFFT=512
         FRAME_SIZE=0.5
         TIME_SHIFT=0.25
         HOP=64
-
-        if wav_file.find('.wav')==-1 and wav_file.find('.WAV')==-1:
-            raise ValueError(wav_file+" is not a valid audio file")
-        self.fs, signal=read(wav_file)
-#         if fs!=16000:
-#             raise ValueError(str(fs)+" is not a valid sampling frequency")
+            
+        fs_in, signal=read(wav_file)
+        signal = scipy.signal.resample(signal,self.fs)
+        
         signal=signal-np.mean(signal)
         signal=signal/np.max(np.abs(signal))
         init=0
         endi=int(FRAME_SIZE*self.fs)
         nf=int(len(signal)/(TIME_SHIFT*self.fs))-1
+        
         if nf>0:
-            mat=torch.zeros(nf,1, self.nmels,126)
+            mat=torch.zeros(nf,1,self.nmels,126)
             j=0
             for k in range(nf):
                 try:
@@ -109,48 +114,30 @@ class AEspeech:
         """
         Compute the continuous wavelet transform to be used as input for the autoencoders from a wav file
         :param wav_file: *.wav file with a sampling frequency of 16kHz
-        :returns: Pytorch tensor (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of Mel frequencies (128), T: time steps (126)
+        :returns: Pytorch tensor (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of frequency (period) bands (128), T: time steps (126)
         """
-        NFFT=512
-        FRAME_SIZE=0.5
-        TIME_SHIFT=0.25
-        HOP=64
+        
+        SAMPLE_PERIOD = 3200
+        HOP = 20
+        NUM_BANDS = SAMPLE_PERIOD//HOP
+        self.fs = 16000
         
         if wav_file.find('.wav')==-1 and wav_file.find('.WAV')==-1:
             raise ValueError(wav_file+" is not a valid audio file")
-        signal=read(wav_file)
-#         if fs!=16000:
-#             raise ValueError(str(fs)+" is not a valid sampling frequency")
-        signal=signal-np.mean(signal)
-        signal=signal/np.max(np.abs(signal))
-        init=0
-        endi=int(FRAME_SIZE*self.fs)
-        nf=int(len(signal)/(TIME_SHIFT*self.fs))-1
-        if nf>0:
-            mat=torch.zeros(nf,1, self.nmels,126)
-            j=0
-            for k in range(nf):
-                try:
-                    frame=signal[init:endi]
-                    imag=melspectrogram(frame, sr=self.fs, n_fft=NFFT, hop_length=HOP, n_mels=self.nmels, fmax=self.fs//2+1)
-                    init=init+int(TIME_SHIFT*self.fs)
-                    endi=endi+int(TIME_SHIFT*self.fs)
-                    if np.min(np.min(imag))<=0:
-                        warnings.warn("There is Inf values in the Mel spectrogram")
-                        continue
-                    imag=np.log(imag, dtype=np.float32)
-                    imagt=torch.from_numpy(imag)
-                    mat[j,:,:,:]=imagt
-                    j+=1
-                except:
-                    init=init+int(TIME_SHIFT*self.fs)
-                    endi=endi+int(TIME_SHIFT*self.fs)
-                    warnings.warn("There is non valid values in the wav file")
-        else:
-            raise ValueError("WAV file is too short to compute the Mel spectrogram tensor")
-        
-        return mat[0:j,:,:,:]
+        fs_in, signal=read(wav_file)
+        signal = scipy.signal.resample(signal,self.fs)
+        signal_new = signal_new - np.mean(signal_new)
+        signal_new = signal_new/np.max(np.abs(signal_new))
 
+        # range of scales to perform the transform
+        mat = torch.zeros(1,1,NUM_BANDS,self.fs)
+        scales =  np.arange(1, SAMPLE_PERIOD, HOP)*pywt.central_frequency(self.waveletype)
+        coefs, freqs = pywt.cwt(signal_new, scales, self.waveletype)
+        coefs=np.log(coefs, dtype=np.float32)
+        mat[0,0,:,:]=torch.from_numpy(coefs)
+        return mat
+
+    
     def show_spectrograms(self, spectrograms):
         """
         Visualization of the computed tensor of Mel-scale spectrograms to be used as input for the autoencoders from a wav file
@@ -175,7 +162,36 @@ class AEspeech:
             plt.tight_layout()
             plt.show()
 
+    def showScalogram(self, wav_file):
+        """
+        Plot the scaleogram (used as input for the autoencoders).
+        :param scalogram: tensor of scalogram obatined from '''compute_cwt(wav-file)'''
+        """
+        SAMPLE_PERIOD = 3200
+        HOP = 20
+        self.fs = 16000
+        
+        if wav_file.find('.wav')==-1 and wav_file.find('.WAV')==-1:
+            raise ValueError(wav_file+" is not a valid audio file")
+        fs_in, signal=read(wav_file)
+        
+        # choose default wavelet function 
+        uns_signal_length = np.shape(signal)[0]
+        signal_new = scipy.signal.resample(signal,self.fs)
+        signal_new = signal_new - np.mean(signal_new)
+        signal_new = signal_new/np.max(np.abs(signal_new))
+        signal_new_length = np.shape(signal_new)[0]
+        xtix = np.array((np.arange(uns_signal_length)/fs_in))
 
+        # range of scales to perform the transform
+        scales = np.arange(1, SAMPLE_PERIOD, HOP)*pywt.central_frequency(self.waveletype)
+
+        ax2 = scg.cws(signal_new[:signal_new_length], scales=scales, figsize=(10, 4.0), yscale = 'log', coi = False, ylabel="Period", xlabel="Time (s)")
+#         ax2.set_title=wav_file.split('/')[-1]
+        ax2.set_xticks(np.arange(0,self.fs,signal_new_length//np.ceil(xtix[-1])))
+        ax2.set_xticklabels(np.round(xtix[::int(uns_signal_length//int(np.ceil(xtix[-1])))],2))
+
+            
     def standard(self, tensor):
         """
         standardize input tensor for the autoencoders

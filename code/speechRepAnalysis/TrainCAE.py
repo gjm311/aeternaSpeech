@@ -1,14 +1,11 @@
-
-
 from SpecDatset import SpecDataset
 import time
 import torch
 from CAE import CAEn
 import numpy as np
 import sys
-#import pandas as pd
-
 import os
+import traintestsplit as tts
 
 
 def standard(tensor, minval, maxval):
@@ -19,6 +16,7 @@ def destandard(tensor, minval, maxval):
     temp=tensor*(maxval-minval)
     return temp+minval
 
+
 if __name__=="__main__":
 
 
@@ -26,17 +24,26 @@ if __name__=="__main__":
         print("python TrainCAE.py <bottleneck_size>")
         sys.exit()
 
-
     PATH=os.path.dirname(os.path.abspath(__file__))
-    PATH_TRAIN=PATH+"/../data/CIEMPIESS_train_melspec/"
-    PATH_TEST=PATH+"/../data/CIEMPIESS_test_melspec/"
+    path_audio = PATH+'/../tedx_spanish_corpus/speech/'
+
+    if not os.path.exists(path_audio+'train/') or not os.path.exists(path_audio+'test/'):
+        split = tts.trainTestSplit(path_audio, tst_perc=0.1)
+        split.audioTrTstSplit()        
+    elif len(os.listdir(path_audio+'train/')) < 1 or not len(os.listdir(path_audio+'test/')) < 1:  
+        split = tts.trainTestSplit(path_audio, tst_perc=0.1)
+        split.audioTrTstSplit()
+           
+    
+    PATH_TRAIN=PATH+"/../tedx_spanish_corpus/speech/train/"
+    PATH_TEST=PATH+"/../tedx_spanish_corpus/speech/test/"
     BATCH_SIZE=16
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
     LR=0.0001
     N_EPOCHS = 50
-    MIN_SCALER=-50.527256
-    MAX_SCALER=6.8561997
+    MIN_SCALER=-50.527256 #MIN value of total energy.
+    MAX_SCALER=6.8561997  #MAX value of total energy.
     NTRAIN=6000
     NVAL=500
 

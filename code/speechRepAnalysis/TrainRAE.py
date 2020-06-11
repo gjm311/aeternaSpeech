@@ -6,6 +6,7 @@ import torch
 from RAE import RAEn
 import numpy as np
 import sys
+import traintestsplit as tts
 #import pandas as pd
 
 import os
@@ -21,15 +22,22 @@ def destandard(tensor, minval, maxval):
 
 if __name__=="__main__":
 
-
-
     if len(sys.argv)!=2:
         print("python TrainRAE.py <bottleneck_size>")
         sys.exit()
 
     PATH=os.path.dirname(os.path.abspath(__file__))
-    PATH_TRAIN=PATH+"/../data/CIEMPIESS_train_melspec/"
-    PATH_TEST=PATH+"/../data/CIEMPIESS_test_melspec/"
+    path_audio = PATH+'/../tedx_spanish_corpus/speech/'
+
+    if not os.path.exists(path_audio+'train/') or not os.path.exists(path_audio+'test/'):
+        split = tts.trainTestSplit(path_audio, tst_perc=0.1)
+        split.audioTrTstSplit()        
+    elif len(os.listdir(path_audio+'train/')) < 1 or not len(os.listdir(path_audio+'test/')) < 1:  
+        split = tts.trainTestSplit(path_audio, tst_perc=0.1)
+        split.audioTrTstSplit()
+        
+    PATH_TRAIN=PATH+"/../tedx_spanish_corpus/speech/train/"
+    PATH_TEST=PATH+"/../tedx_spanish_corpus/speech/test/"
     BATCH_SIZE=16
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])

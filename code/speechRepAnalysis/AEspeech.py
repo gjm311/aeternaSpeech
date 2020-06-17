@@ -37,9 +37,12 @@ class AEspeech:
         self.model_type=model
         self.units=units
         self.PATH=os.path.dirname(os.path.abspath(__file__))
-        SCALERS = pd.read_csv("../tedx_spanish_corpus/scales.csv")
-        MIN_SCALER= SCALERS['Min Scale'] #MIN value of total energy.
-        MAX_SCALER= SCALERS['Max Scale']  #MAX value of total energy.
+        try:
+            SCALERS = pd.read_csv("scales.csv")
+            MIN_SCALER= float(SCALERS['Min Scale']) #MIN value of total energy.
+            MAX_SCALER= float(SCALERS['Max Scale'])  #MAX value of total energy.
+        except:
+            print("Scalers not found..")
         self.fs=fs
         self.nmels=nmels
         self.waveletype = waveletype
@@ -48,6 +51,7 @@ class AEspeech:
             pt_path = self.PATH+"/pts/"
         except:
             print("Must train encoders as 'pts' folder does not exist.")
+            
         if model=="CAE":
             self.AE=CAEn(units)
             if torch.cuda.is_available():

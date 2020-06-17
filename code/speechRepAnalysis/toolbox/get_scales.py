@@ -16,7 +16,16 @@ from scipy.io.wavfile import read
 if __name__=="__main__":
     
     PATH=os.path.dirname(os.path.abspath(__file__))
-    path_audio = PATH+'/../../tedx_spanish_corpus/speech/'
+    if len(sys.argv)!=2:
+        print("python get_spec_full.py <path_audio>")
+        sys.exit()
+
+    path_audio=PATH+sys.argv[1]
+    
+    if path_audio[-1] != '/':
+        path_audio = path_audio+'/'
+
+#     path_audio = PATH+'/../../../../../../../cluster/ag61iwyb/tedx_spanish_corpus/speech/'
 
     if os.path.exists(path_audio+'train/') or os.path.exists(path_audio+'test/'):
         if len(os.listdir(path_audio+'train/')) >= 1 or len(os.listdir(path_audio+'test/')) >= 1:  
@@ -49,7 +58,7 @@ if __name__=="__main__":
     d['Max Scale'].append(max_en)
                 
     df = pd.DataFrame(data=d)
-    df.to_csv(path_audio+'/../scales.csv')
+    df.to_csv(PATH+'/../scales.csv')
     
     
            

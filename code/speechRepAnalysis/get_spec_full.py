@@ -10,12 +10,13 @@ import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     
-    if len(sys.argv)!=3:
-        print("python get_spec_full.py <path_audios> <path_images>")
+    if len(sys.argv)!=2:
+        print("python get_spec_full.py <path_audios>")
         sys.exit()
+        
     PATH = os.path.dirname(os.path.abspath(__file__))
     PATH_AUDIO=PATH+sys.argv[1]
-    PATH_IMAGE=PATH+sys.argv[2]
+    PATH_IMAGE=PATH_AUDIO+"/../images/"
 
     NFFT=512
     FRAME_SIZE=0.5

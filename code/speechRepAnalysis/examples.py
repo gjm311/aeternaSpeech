@@ -35,6 +35,13 @@ if __name__=="__main__":
                                                               #(static: one feture vector per utterance)
     print(df1)
     print(df2)
-
-    df1.to_csv(PATH+"/bottle_example.csv")
-    df2.to_csv(PATH+"/error_example.csv")
+    
+    example_path = PATH+"/examples/"
+    if not os.example_path.isdir:
+        os.mkdir(example_path)
+    df1.to_csv(example_path+"/bottle_example.csv")
+    df2.to_csv(example_path+"/error_example.csv")
+    
+    
+    
+    

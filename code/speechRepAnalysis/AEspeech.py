@@ -37,26 +37,31 @@ class AEspeech:
         self.model_type=model
         self.units=units
         self.PATH=os.path.dirname(os.path.abspath(__file__))
-        self.min_scaler=-50.527256
-        self.max_scaler=6.8561997
+        SCALERS = pd.read_csv("../tedx_spanish_corpus/scales.csv")
+        MIN_SCALER= SCALERS['Min Scale'] #MIN value of total energy.
+        MAX_SCALER= SCALERS['Max Scale']  #MAX value of total energy.
         self.fs=fs
         self.nmels=nmels
         self.waveletype = waveletype
         
+        try:                          
+            pt_path = self.PATH+"/pts/"
+        except:
+            print("Must train encoders as 'pts' folder does not exist.")
         if model=="CAE":
             self.AE=CAEn(units)
             if torch.cuda.is_available():
-                self.AE.load_state_dict(torch.load(self.PATH+"/"+str(units)+'_CAE.pt'))
+                self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt'))
                 self.AE.cuda()
             else:
-                self.AE.load_state_dict(torch.load(self.PATH+"/"+str(units)+'_CAE.pt', map_location='cpu'))
+                self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt', map_location='cpu'))
         elif model=="RAE":
             self.AE=RAEn(units)
             if torch.cuda.is_available():
-                self.AE.load_state_dict(torch.load(self.PATH+"/"+str(units)+'_RAE.pt'))
+                self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt'))
                 self.AE.cuda()
             else:
-                self.AE.load_state_dict(torch.load(self.PATH+"/"+str(units)+'_RAE.pt', map_location='cpu'))
+                self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt', map_location='cpu'))
 
         else:
             raise ValueError("Model "+model+" is not valid. Please choose only CAE or RAE")

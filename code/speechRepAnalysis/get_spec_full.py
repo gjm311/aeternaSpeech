@@ -1,5 +1,3 @@
-
-
 import sys
 import os
 
@@ -15,10 +13,9 @@ if __name__ == "__main__":
     if len(sys.argv)!=3:
         print("python get_spec_full.py <path_audios> <path_images>")
         sys.exit()
-
-
-    PATH_AUDIO=sys.argv[1]
-    PATH_IMAGE=sys.argv[2]
+    PATH = os.path.dirname(os.path.abspath(__file__))
+    PATH_AUDIO=PATH+sys.argv[1]
+    PATH_IMAGE=PATH+sys.argv[2]
 
     NFFT=512
     FRAME_SIZE=0.5
@@ -28,8 +25,13 @@ if __name__ == "__main__":
     
     hf=os.listdir(PATH_AUDIO)
     hf.sort()
-    print(PATH_AUDIO, len(hf))
-
+    if len(hf) == 0:
+        print(PATH_AUDIO+ " is empty...", len(hf))
+        sys.exit()
+    else:
+        print(PATH_AUDIO, len(hf))
+        
+        
     if not os.path.exists(PATH_IMAGE):
         os.makedirs(PATH_IMAGE)
     countbad=0

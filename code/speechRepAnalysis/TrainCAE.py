@@ -24,12 +24,13 @@ def destandard(tensor, minval, maxval):
 if __name__=="__main__":
 
 
-    if len(sys.argv)!=3:
+    if len(sys.argv)!=4:
         print("python TrainCAE.py <bottleneck_sizes> <image path>")
         sys.exit()
-        
+    
+    
     path_image = PATH+sys.argv[2]
-#     path_image = PATH+'/../tedx_spanish_corpus/images/'
+    rep_typ = path_image.split('/')[-2]
 
     if not os.path.exists(path_image+'train/') or not os.path.exists(path_image+'test/'):
         split = tts.trainTestSplit(path_image, tst_perc=0.1)
@@ -55,7 +56,7 @@ if __name__=="__main__":
     train=SpecDataset(PATH_TRAIN)
     test=SpecDataset(PATH_TEST)
 
-    save_path = PATH+"/pts/"
+    save_path = PATH+"/pts/"+rep_typ+'/'+path_image.split('/')[-1]
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
     
@@ -92,7 +93,8 @@ if __name__=="__main__":
 
             # clear the gradients of all optimized variables
             optimizer.zero_grad()
-            data=standard(data, MIN_SCALER, MAX_SCALER)
+            if rep_typ == 'spec':
+                data=standard(data, MIN_SCALER, MAX_SCALER)
 
             data=data.float()
 
@@ -122,7 +124,9 @@ if __name__=="__main__":
         model.eval() # prep model for evaluation
         for data_val in test_loader:
             # forward pass: compute predicted outputs by passing inputs to the model
-            data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
+            if rep_typ == 'spec':
+                data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
+            
             data_val=data_val.float()
             if torch.cuda.is_available():
                 data_val=data_val.cuda()
@@ -154,8 +158,6 @@ if __name__=="__main__":
             valid_loss,
             time.time()-start
             ))
-
-
 
 
         # save model if validation loss has decreased

@@ -27,7 +27,7 @@ import scipy.stats as st
 
 class AEspeech:
 
-    def __init__(self,model,units,fs=16000,nmels=512,waveletype='morl'):
+    def __init__(self,model,units,fs=16000,nmels=128,waveletype='morl'):
         """
         Feature extraction from speech signals based on representation learning strategies using convolutional and recurrent autoencoders
         :param model: type of autoencoder to extract the features from ('CAE': convolutional autoencoders, 'RAE': recurrent autoencoder)
@@ -241,7 +241,7 @@ class AEspeech:
     def compute_rec_error_features(self, wav_file, return_numpy=True):
         """
         Compute the  reconstruction error features from the autoencoder
-        :param wav_file: *.wav file with a sampling frequency of 16kHz
+        :param wav_file: *.wav file with a given sampling frequency
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (nf, 128) or numpy array (nf, 128) with the extracted features. nf: number of frames
         """

@@ -6,7 +6,6 @@ import sys
 import torch
 from tqdm import tqdm
 import traintestsplit as tts 
-import warnings
 
 sys.path.append(os.path.abspath('../'))
 from AEspeech import AEspeech
@@ -24,8 +23,6 @@ if __name__=="__main__":
     
     if path_audio[-1] != '/':
         path_audio = path_audio+'/'
-
-#     path_audio = PATH+'/../../../../../../../cluster/ag61iwyb/tedx_spanish_corpus/speech/'
 
     if os.path.exists(path_audio+'train/') or os.path.exists(path_audio+'test/'):
         if len(os.listdir(path_audio+'train/')) >= 1 or len(os.listdir(path_audio+'test/')) >= 1:  

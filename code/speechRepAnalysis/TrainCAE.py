@@ -25,18 +25,18 @@ if __name__=="__main__":
 
 
     if len(sys.argv)!=4:
-        print("python TrainCAE.py <bottleneck_sizes> <image path>")
+        print("python TrainCAE.py <bottleneck_sizes or wvlt> <image path>")
         sys.exit()
     
     
-    path_image = PATH+sys.argv[2]
-    rep_typ = path_image.split('/')[-2]
+    path_image=PATH+sys.argv[2]
+    rep_typ=path_image.split('/')[-2]
 
     if not os.path.exists(path_image+'train/') or not os.path.exists(path_image+'test/'):
-        split = tts.trainTestSplit(path_image, tst_perc=0.1)
+        split=tts.trainTestSplit(path_image, tst_perc=0.1)
         split.fileTrTstSplit()        
     elif len(os.listdir(path_image+'train/')) < 1 or len(os.listdir(path_image+'test/')) < 1:  
-        split = tts.trainTestSplit(path_image, tst_perc=0.1)
+        split=tts.trainTestSplit(path_image, tst_perc=0.1)
         split.fileTrTstSplit()
            
     

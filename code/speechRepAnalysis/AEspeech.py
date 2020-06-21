@@ -27,7 +27,7 @@ import scipy.stats as st
 
 class AEspeech:
 
-    def __init__(self,model,units,fs=16000,nmels=128,waveletype='morl'):
+    def __init__(self,model,units,fs=16000,rep='spec',nmels=128,waveletype='morl'):
         """
         Feature extraction from speech signals based on representation learning strategies using convolutional and recurrent autoencoders
         :param model: type of autoencoder to extract the features from ('CAE': convolutional autoencoders, 'RAE': recurrent autoencoder)
@@ -47,10 +47,11 @@ class AEspeech:
         self.nmels=nmels
         self.waveletype = waveletype
         
-        try:                          
-            pt_path = self.PATH+"/pts/"
-        except:
-            print("Must train encoders as 'pts' folder does not exist.")
+        pt_path = self.PATH+"/pts/"+rep+"/"+str(fs)+'/'
+        if os.path.isdir(pt_path):                          
+            continue
+        else:
+            print("Inputs are wrong or 'pts' directory is incorect...")
             
         if model=="CAE":
             self.AE=CAEn(units)

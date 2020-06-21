@@ -15,10 +15,10 @@ if __name__ == "__main__":
         print("python get_spec_full.py <fs (Hz)> <path_audios>")
         sys.exit()
     
-    FS =sys.argv[1]
-    
+    FS = int(sys.argv[1])
+   
     PATH = os.path.dirname(os.path.abspath(__file__))
-    PATH_AUDIO=PATH+sys.argv[2
+    PATH_AUDIO=PATH+sys.argv[2]
     PATH_SPEC=PATH_AUDIO+"/../images/spec/"+str(FS)+"/"
     PATH_WVLT=PATH_AUDIO+"/../images/wvlt/"+str(FS)+"/"
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     countinf=0
     for j in range(len(hf)):
         print("Procesing audio", j, hf[j], len(hf))
-        fs_in, data=read(PATH_AUDIO+hf[j])
+        fs_in, signal=read(PATH_AUDIO+hf[j])
         data = scipy.signal.resample(signal,FS)
         if len(data.shape)>1:
             continue
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         data=data/np.max(np.abs(data))
         file_spec_out=PATH_SPEC+hf[j].replace(".wav", "")
         file_wvlt_out=PATH_WVLT+hf[j].replace(".wav", "")
-        if os.path.isfile(file_out):
+        if os.path.isfile(file_wvlt_out) and os.path.isfile(file_spec_out):
             continue
         
         init=0
@@ -85,8 +85,8 @@ if __name__ == "__main__":
             countbad+=1
             
         mat = torch.zeros(1,1,NUM_BANDS,FS)
-        scales =  np.arange(1, SAMPLE_PERIOD, HOP)*pywt.central_frequency(self.waveletype)
-        coefs, freqs = pywt.cwt(signal_new, scales, self.waveletype)
+        scales =  np.arange(1, SAMPLE_PERIOD, HOP)*pywt.central_frequency('morl')
+        coefs, freqs = pywt.cwt(data, scales, 'morl')
         coefs=np.log(coefs, dtype=np.float32)
         np.save(file_wvlt_out+"_.npy",coefs)
 

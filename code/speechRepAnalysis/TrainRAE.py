@@ -27,7 +27,7 @@ if __name__=="__main__":
         print("python TrainCAE.py <bottleneck_sizes> <image path>")
         sys.exit()
         
-    path_image = PATH+sys.argv[2]
+    path_image=PATH+sys.argv[2]
     rep_typ = path_image.split('/')[-2]
 #     path_image = PATH+'/../tedx_spanish_corpus/images/'
 

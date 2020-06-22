@@ -12,16 +12,15 @@ import matplotlib.pyplot as plt
 if __name__ == "__main__":
     
     if len(sys.argv)!=3:
-        print("python get_spec_full.py <fs (Hz)> <path_audios>")
+        print("python get_spec_full.py <path_audios>")
         sys.exit()
-    
-    FS = int(sys.argv[1])
    
     PATH = os.path.dirname(os.path.abspath(__file__))
     PATH_AUDIO=PATH+sys.argv[2]
-    PATH_SPEC=PATH_AUDIO+"/../images/spec/"+str(FS)+"/"
-    PATH_WVLT=PATH_AUDIO+"/../images/wvlt/"+str(FS)+"/"
-
+    PATH_SPEC=PATH_AUDIO+"/../images/spec/"
+    PATH_WVLT=PATH_AUDIO+"/../images/wvlt/"
+    
+    FS=16000
     NFFT=512
     FRAME_SIZE=0.5
     TIME_SHIFT=0.25

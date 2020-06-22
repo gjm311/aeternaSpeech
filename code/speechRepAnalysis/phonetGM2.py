@@ -111,7 +111,7 @@ class Phonet:
             return np.nan
 
 
-    def get_phon_wav(self, signals, feat_file, fs, phonclass):
+    def get_phon_wav(self, signal, feat_file, fs, phonclass):
         """
         Estimate the phonological classes using the BGRU models for an audio file (.wav)
 

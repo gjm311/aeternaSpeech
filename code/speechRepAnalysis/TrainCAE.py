@@ -24,24 +24,28 @@ def destandard(tensor, minval, maxval):
 if __name__=="__main__":
 
 
-    if len(sys.argv)!=4:
-        print("python TrainCAE.py <bottleneck_sizes or wvlt> <image path>")
+    if len(sys.argv)!=3:
+        print("python TrainCAE.py <bottleneck_sizes> <image path>")
         sys.exit()
     
     
     path_image=PATH+sys.argv[2]
     rep_typ=path_image.split('/')[-2]
 
+    #if train/test directories don't exist, make them (train/test and train/validation in train)
     if not os.path.exists(path_image+'train/') or not os.path.exists(path_image+'test/'):
-        split=tts.trainTestSplit(path_image, tst_perc=0.1)
-        split.fileTrTstSplit()        
-    elif len(os.listdir(path_image+'train/')) < 1 or len(os.listdir(path_image+'test/')) < 1:  
-        split=tts.trainTestSplit(path_image, tst_perc=0.1)
+        split=tts.trainTestSplit(path_image, tst_perc=0.2)
         split.fileTrTstSplit()
-           
-    
-    PATH_TRAIN=path_image+"/train/"
-    PATH_TEST=path_image+"/test/"
+        splitVal=tts.trainTestSplit(path_image+'/train/', tst_perc=0.1)
+        splitVal.fileTrTstSplit()
+    elif len(os.listdir(path_image+'test/')) < 1:  
+        split=tts.trainTestSplit(path_image, tst_perc=0.2)
+        split.fileTrTstSplit()
+        splitVal=tts.trainTestSplit(path_image+'/train/', tst_perc=0.1)
+        splitVal.fileTrTstSplit()
+        
+    PATH_TRAIN=path_image+"/train/train/"
+    PATH_TEST=path_image+"/test/test/"
     BATCH_SIZE=16
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
@@ -56,7 +60,7 @@ if __name__=="__main__":
     train=SpecDataset(PATH_TRAIN)
     test=SpecDataset(PATH_TEST)
 
-    save_path = PATH+"/pts/"+rep_typ+'/'+path_image.split('/')[-1]
+    save_path = PATH+"/pts/"+rep_typ+'/'
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
     

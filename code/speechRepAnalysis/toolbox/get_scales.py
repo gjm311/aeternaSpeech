@@ -25,9 +25,12 @@ if __name__=="__main__":
         path_audio = path_audio+'/'
 
     if os.path.exists(path_audio+'train/') or os.path.exists(path_audio+'test/'):
-        if len(os.listdir(path_audio+'train/')) >= 1 or len(os.listdir(path_audio+'test/')) >= 1:  
-            split = tts.trainTestSplit(path_audio)
+        if len(os.listdir(path_audio+'train/train')) >= 1 or len(os.listdir(path_audio+'train/test')) >= 1:  
+            split = tts.trainTestSplit(path_audio+'train/')
             split.trTstReset()
+            split2 = tts.trainTestSplit(path_audio)
+            split2.trTstReset()
+            
             
     FS = 16000
     NMELS = 128

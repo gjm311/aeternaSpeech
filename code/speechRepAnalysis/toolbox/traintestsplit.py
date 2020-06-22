@@ -14,7 +14,7 @@ sys.path.append("/../")
 
 class trainTestSplit:
     
-    def __init__(self, file_path, tst_perc=.1):
+    def __init__(self, file_path, tst_perc=.2):
 
         self.file_path = file_path
         self.tst_perc = tst_perc
@@ -61,6 +61,8 @@ class trainTestSplit:
                 shutil.move(self.tr_path+file, self.file_path+'/'+file)
             for file in os.listdir(self.tst_path):
                 shutil.move(self.tst_path+file, self.file_path+'/'+file)
+            os.unlink(self.tr_path)
+            os.unlink(self.tst_path)
 
         
                             

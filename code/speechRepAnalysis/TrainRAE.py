@@ -6,10 +6,7 @@ import pandas as pd
 import os
 import sys
 from RAE import RAEn
-
-PATH=os.path.dirname(os.path.abspath(__file__))
-sys.path.append(PATH+"/toolbox/")
-import traintestsplit as tts
+import toolbox.traintestsplit as tts
 
 
 def standard(tensor, minval, maxval):
@@ -24,26 +21,32 @@ if __name__=="__main__":
     
     PATH=os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv)!=3:
-        print("python TrainRAE.py <bottleneck_sizes> <image path>")
+        print("python TrainRAE.py <bottleneck_sizes> <rep path>")
         sys.exit()
-        
-    path_image=PATH+sys.argv[2]
-    rep_typ = path_image.split('/')[-2]
+    #repPath: .../reps/wvlt or spec/train/ 
+    
+    if sys.argv[2][0] !='/':
+        sys.argv[2] = sys.argv[2]+'/'
 
-    #if train/test directories don't exist, make them (train/test and train/validation in train)
-    if not os.path.exists(path_image+'train/') or not os.path.exists(path_image+'test/'):
-        split=tts.trainTestSplit(path_image, tst_perc=0.2)
+    path_rep=PATH+sys.argv[2]
+    if 'wvlt' in sys.argv[2]:
+        rep_typ='wvlt'
+    elif 'spec' in sys.argv[2]:
+        rep_typ='spec'
+    else:
+        print("Please correct directory path input...")
+        sys.exit()
+    
+    if not os.path.exists(path_rep+'/train/') or not os.path.exists(path_rep+'/test/'):
+        split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
         split.fileTrTstSplit()
-        splitVal=tts.trainTestSplit(path_image+'/train/', tst_perc=0.1)
-        splitVal.fileTrTstSplit()
-    elif len(os.listdir(path_image+'test/')) < 1:  
-        split=tts.trainTestSplit(path_image, tst_perc=0.2)
+
+    elif len(os.listdir(path_rep+'/train/')) == 0:  
+        split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
         split.fileTrTstSplit()
-        splitVal=tts.trainTestSplit(path_image+'/train/', tst_perc=0.1)
-        splitVal.fileTrTstSplit()
-        
-    PATH_TRAIN=path_image+"/train/train/"
-    PATH_TEST=path_image+"/test/test/"
+   
+    PATH_TRAIN=path_rep+"/train/"
+    PATH_TEST=path_rep+"/test/"
     BATCH_SIZE=16
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])

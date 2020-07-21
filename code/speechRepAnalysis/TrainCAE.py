@@ -6,10 +6,8 @@ import pandas as pd
 import os
 import sys
 from CAE import CAEn
-
-PATH=os.path.dirname(os.path.abspath(__file__))
-sys.path.append(PATH+"/toolbox/")
-import traintestsplit as tts
+from wvCAE import wvCAEn
+import toolbox.traintestsplit as tts
 
 
 def standard(tensor, minval, maxval):
@@ -23,30 +21,37 @@ def destandard(tensor, minval, maxval):
 
 if __name__=="__main__":
 
-
+    PATH=os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv)!=3:
-        print("python TrainCAE.py <bottleneck_sizes> <image path>")
+        print("python TrainCAE.py <bottleneck_sizes> <rep path>")
         sys.exit()
+    #repPath: "./tedx_spanish_corpus/reps/'wvlt or spec'/train/"    
     
     
-    path_image=PATH+sys.argv[2]
-    rep_typ=path_image.split('/')[-2]
+    if sys.argv[2][0] !='/':
+        sys.argv[2] = sys.argv[2]+'/'
 
-    #if train/test directories don't exist, make them (train/test and train/validation in train)
-    if not os.path.exists(path_image+'train/') or not os.path.exists(path_image+'test/'):
-        split=tts.trainTestSplit(path_image, tst_perc=0.2)
-        split.fileTrTstSplit()
-        splitVal=tts.trainTestSplit(path_image+'/train/', tst_perc=0.1)
-        splitVal.fileTrTstSplit()
-    elif len(os.listdir(path_image+'test/')) < 1:  
-        split=tts.trainTestSplit(path_image, tst_perc=0.2)
-        split.fileTrTstSplit()
-        splitVal=tts.trainTestSplit(path_image+'/train/', tst_perc=0.1)
-        splitVal.fileTrTstSplit()
+    path_rep=PATH+sys.argv[2]
+    if 'wvlt' in sys.argv[2]:
+        rep_typ='wvlt'
+    elif 'spec' in sys.argv[2]:
+        rep_typ='spec'
+    else:
+        print("Please correct directory path input...")
+        sys.exit()
         
-    PATH_TRAIN=path_image+"/train/train/"
-    PATH_TEST=path_image+"/test/test/"
-    BATCH_SIZE=16
+    
+    if not os.path.exists(path_rep+'train/') or not os.path.exists(path_rep+'test/'):
+        split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
+        split.fileTrTstSplit()
+
+    elif len(os.listdir(path_rep+'train/')) == 0:  
+        split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
+        split.fileTrTstSplit()
+
+    PATH_TRAIN=path_rep+"/train/"
+    PATH_TEST=path_rep+"/test/"
+    BATCH_SIZE=2
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
     LR=0.0001
@@ -56,6 +61,9 @@ if __name__=="__main__":
     MAX_SCALER= float(SCALERS['Max Scale'])  #MAX value of total energy.
     NTRAIN=6000
     NVAL=500
+    FS=16000
+    NFR=32
+    NBF=8
 
     train=SpecDataset(PATH_TRAIN)
     test=SpecDataset(PATH_TEST)
@@ -67,8 +75,10 @@ if __name__=="__main__":
     train_loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     test_loader = torch.utils.data.DataLoader(test, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     
-
-    model=CAEn(BOTTLE_SIZE)
+    if rep_typ=='spec':
+        model=CAEn(BOTTLE_SIZE)
+    elif rep_typ=='wvlt':
+        model=wvCAEn(BOTTLE_SIZE)
     criterion = torch.nn.MSELoss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr = LR)
@@ -99,6 +109,8 @@ if __name__=="__main__":
             optimizer.zero_grad()
             if rep_typ == 'spec':
                 data=standard(data, MIN_SCALER, MAX_SCALER)
+#             elif rep_typ=='wvlt':
+#                 data=torch.reshape(data,[BATCH_SIZE,1,NFR,NBF])
 
             data=data.float()
 
@@ -130,6 +142,8 @@ if __name__=="__main__":
             # forward pass: compute predicted outputs by passing inputs to the model
             if rep_typ == 'spec':
                 data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
+            elif rep_typ=='wvlt':
+                data_val=torch.reshape(data,[BATCH_SIZE,1,NFR,NBF])
             
             data_val=data_val.float()
             if torch.cuda.is_available():

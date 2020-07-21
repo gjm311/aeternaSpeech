@@ -33,12 +33,12 @@ class Phonet:
         self.hidden_size=64
         self.lr=0.001
         self.recurrent_droput_prob=0.0
-        self.size_frame=0.025
+        self.size_frame=0.05
         self.time_shift=0.025
-        self.nfilt=33
+        self.nfilt=128
         self.len_seq=20
         self.num_labels=2
-        self.nfeat=34
+        self.nfeat=128
         self.thrplot=0.5
         self.nphonemes=22
         
@@ -111,7 +111,7 @@ class Phonet:
             return np.nan
 
 
-    def get_phon_wav(self, signal, feat_file, fs, phonclass):
+    def get_phon_wav(self, feat, feat_file, phonclass):
         """
         Estimate the phonological classes using the BGRU models for an audio file (.wav)
 
@@ -151,7 +151,7 @@ class Phonet:
 #         fs, signal=read(audio_file)
 #         if fs!=16000:
 #             raise ValueError(str(fs)+" is not a valid sampling frequency")
-        feat=self.get_feat(signal,fs)
+#         feat=self.get_feat(signal,16000)
         nf=int(feat.shape[0]/self.len_seq)
         start=0
         fin=self.len_seq

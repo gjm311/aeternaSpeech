@@ -11,7 +11,7 @@ if __name__=="__main__":
     wav_file=PATH+"../tedx_spanish_corpus/speech/"
 
 
-    aespeech=AEspeech("CAE",1024,fs=16000) # load the pretrained CAE with 1024 units
+    aespeech=AEspeech("CAE",256) # load the pretrained CAE with 1024 units
     mat_spec=aespeech.compute_spectrograms(wav_file) # compute the decoded spectrograms from the autoencoder
     print(mat_spec.size())
 #     aespeech.show_spectrograms(mat_spec)

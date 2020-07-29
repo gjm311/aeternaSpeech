@@ -6,6 +6,7 @@ import pandas as pd
 import os
 import sys
 from RAE import RAEn
+from wvRAE import wvRAEn
 import toolbox.traintestsplit as tts
 
 
@@ -26,6 +27,8 @@ if __name__=="__main__":
     #repPath: .../reps/wvlt or spec/train/ 
     
     if sys.argv[2][0] !='/':
+        sys.argv[2] = '/'+sys.argv[2]
+    if sys.argv[2][-1] !='/':
         sys.argv[2] = sys.argv[2]+'/'
 
     path_rep=PATH+sys.argv[2]
@@ -47,6 +50,7 @@ if __name__=="__main__":
    
     PATH_TRAIN=path_rep+"/train/"
     PATH_TEST=path_rep+"/test/"
+
     BATCH_SIZE=16
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
@@ -64,13 +68,17 @@ if __name__=="__main__":
     save_path = PATH+"/pts/"+rep_typ+'/'
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
-       
+   
+
     train_loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     test_loader = torch.utils.data.DataLoader(test, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
 
-    model=RAEn(BOTTLE_SIZE)
-    criterion = torch.nn.MSELoss()
-
+    if rep_typ=='spec':
+        model=RAEn(BOTTLE_SIZE)
+    elif rep_typ=='wvlt':
+        model=wvRAEn(BOTTLE_SIZE)
+    criterion = torch.nn.MSELoss()    
+    
     optimizer = torch.optim.Adam(model.parameters(), lr = LR)
 
     if torch.cuda.is_available():
@@ -97,6 +105,7 @@ if __name__=="__main__":
             optimizer.zero_grad()
             if rep_typ == 'spec':
                 data=standard(data, MIN_SCALER, MAX_SCALER)
+                
             data=data.float()
 
             if torch.cuda.is_available():
@@ -127,6 +136,7 @@ if __name__=="__main__":
             # forward pass: compute predicted outputs by passing inputs to the model
             if rep_typ == 'spec':
                 data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
+                
             data_val=data_val.float()
             if torch.cuda.is_available():
                 data_val=data_val.cuda()

@@ -7,10 +7,10 @@ from scipy.io.wavfile import read
 import scipy
 import numpy as np
 import numpy.fft
+import cv2
 
 from librosa.feature import melspectrogram
 
-import toolbox.wvltpack as wvpk
 import toolbox.traintestsplit as tts
 import matplotlib.pyplot as plt
 
@@ -50,10 +50,9 @@ if __name__ == "__main__":
     FRAME_SIZE=0.5
     TIME_SHIFT=0.25
     HOP=64
-#     WV_HOP=25
     NMELS=128
-#     SAMPLE_PERIOD = 3200
-#     NUM_BANDS = SAMPLE_PERIOD//WV_HOP
+    DIM=()
+    SNIP_LEN=50#in mS
     
     for trtst in ['/train/', '/test/']:
         audio_path=PATH_AUDIO+trtst
@@ -91,56 +90,76 @@ if __name__ == "__main__":
             file_spec_out=spec_path+hf[j].replace(".wav", "")
             file_wvlt_out=wvlt_path+hf[j].replace(".wav", "")
             if os.path.isfile(file_wvlt_out) and os.path.isfile(file_spec_out):
-                continue
-            
-            wvs=wvpk.wvltPack(data)
-            wv_mat=wvs.get_wvlts()
-            
-#             [freqs,psi,phi]=create_wavelets(FS,nbf=NBF,dil=2)
-#             fcoefs,fphi=wavelet_transform(data,psi,phi)     
-#             wv_mat[0,:,:]=fcoefs
-
-            for k in range(wv_mat.shape[0]):
-                np.save(file_wvlt_out+"_"+str(k)+".npy", wv_mat[k,:,:,:])
-
+                continue            
+                
+            NFR=int(data.shape[0]*1000/(FS*SNIP_LEN))
+            FRAME_SIZE=int(data.shape[0]/NFR)
+            OVRLP=0.5
+            SHIFT=int(FRAME_SIZE*OVRLP)
+            NBF=64
+            TIME_STEPS=256
+            DIM=(TIME_STEPS,NBF)
+                
             init=0
-            num_samples=int(FRAME_SIZE*FS)
-            endi=num_samples
+            endi=FRAME_SIZE
+            wv_mat=np.zeros((1,NBF,TIME_STEPS),dtype=np.float32)
             
-            nf=int(len(data)/(TIME_SHIFT*FS))-1
-            if nf>0:
-                mat=np.zeros((1,NMELS,126), dtype=np.float32)
-#                 wv_mat=np.zeros((1,NBF,FS),dtype=np.float32)
-                for k in range(nf):
-                    try:
-                        frame=data[init:endi]
-                        imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS/2)
-                        
-    #                                             
-                        init=init+int(TIME_SHIFT*FS)
-                        endi=endi+int(TIME_SHIFT*FS)
-                        if np.min(np.min(imag))<=0:
-                            countinf+=1
-                            continue
-                            
-                        imag=np.log(imag, dtype=np.float32)
-                        mat[0,:,:]=imag
-                        np.save(file_spec_out+"_"+str(k)+".npy",mat)
+            for k in range(NFR):    
+                frame=data[init:endi]                         
+                init=init+int(SHIFT)
+                endi=endi+int(SHIFT)
+                cwtmatr,_ = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
 
-                    except:
-                        init=init+int(TIME_SHIFT*FS)
-                        endi=endi+int(TIME_SHIFT*FS)
-                        countinf+=1
+                bicubic_img = cv2.resize(np.real(cwtmatr),DIM,interpolation=cv2.INTER_CUBIC)
+                
+                wv_mat[0,:,:]=bicubic_img
+                np.save(file_wvlt_out+"_"+str(k)+".npy",wv_mat)
+    
+    
+#             init=0
+#             num_samples=int(FRAME_SIZE*FS)
+#             endi=num_samples
+            
+# #             #Create wavelet basis and get necessary dimensions to scale to 128 time steps
+# #             [freqs,psi,phi]=create_wavelets(num_samples,nbf=NBF,dil=DIL)
+            
+            
+#             nf=int(len(data)/(TIME_SHIFT*FS))-1
+#             if nf>0:
+# #                 mat=np.zeros((1,NMELS,126), dtype=np.float32)
+#                 for k in range(nf):
+# #                     try:
+#                     frame=data[init:endi]
+# #                         imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS/2)
 
-            else:
-                print("WARNING, audio too short", hf[j], len(data))
-                countbad+=1
+# #                     w_scale_percent=NBF*4/fpsi.shape[1] # percent of original size
+# #                     width = int(fpsi.shape[1] * w_scale_percent)
+# #                     dim = (width,NBF)
+# #                     bicubic_img = cv2.resize(np.real(fpsi),dim,interpolation=cv2.INTER_CUBIC)
+
+#                     init=init+int(TIME_SHIFT*FS)
+#                     endi=endi+int(TIME_SHIFT*FS)
+# #                     if np.min(np.min(imag))<=0:
+# #                         countinf+=1
+# #                         continue
+# #                           imag=np.log(imag, dtype=np.float32)
+# #                         mat[0,:,:]=imag
+# #                         np.save(file_spec_out+"_"+str(k)+".npy",mat)
+
+# #                     except:
+# #                         init=init+int(TIME_SHIFT*FS)
+# #                         endi=endi+int(TIME_SHIFT*FS)
+# #                         countinf+=1
+
+#             else:
+#                 print("WARNING, audio too short", hf[j], len(data))
+#                 countbad+=1
 
            
 
 
-    print(countbad)
-    print(countinf)
+#     print(countbad)
+#     print(countinf)
 
 
 

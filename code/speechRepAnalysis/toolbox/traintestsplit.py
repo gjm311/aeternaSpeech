@@ -10,12 +10,13 @@ import shutil
 import random
 import sys
 import pdb
+ 
 sys.path.append("/../")
 PATH=os.path.dirname(os.path.abspath(__file__))
 
 class trainTestSplit:
     
-    def __init__(self, file_path,file_type='.wav', tst_perc=.2):
+    def __init__(self,file_path,file_type='.wav', tst_perc=.2):
         
         self.dir_path=PATH+'/../'
         self.file_path=file_path
@@ -108,7 +109,7 @@ class trainTestSplit:
                     continue
                     
         
-    def trTstReset(self): 
+    def wavReset(self): 
         if len(os.listdir(self.tr_path))==0 and len(os.listdir(self.tst_path))==0:
             print("Directory is empty. No files to reset...")
         else:
@@ -116,10 +117,9 @@ class trainTestSplit:
                 shutil.move(self.tr_path+file, self.file_path+'/'+file)
             for file in os.listdir(self.tst_path):
                 shutil.move(self.tst_path+file, self.file_path+'/'+file)
-            os.unlink(self.tr_path)
-            os.unlink(self.tst_path)
-
-                  
+            os.rmtree(self.tr_path)
+            os.rmtree(self.tst_path)
+                            
     def saveAssignments(self,hf,tr_ids,tst_ids):
         tr_names=[hf[lnk] for lnk in tr_ids]
         tst_names=[hf[lnk] for lnk in tst_ids]

@@ -29,6 +29,8 @@ if __name__=="__main__":
     
     
     if sys.argv[2][0] !='/':
+        sys.argv[2] = '/'+sys.argv[2]
+    if sys.argv[2][-1] !='/':
         sys.argv[2] = sys.argv[2]+'/'
 
     path_rep=PATH+sys.argv[2]
@@ -51,7 +53,7 @@ if __name__=="__main__":
 
     PATH_TRAIN=path_rep+"/train/"
     PATH_TEST=path_rep+"/test/"
-    BATCH_SIZE=2
+    BATCH_SIZE=16
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
     LR=0.0001
@@ -79,10 +81,9 @@ if __name__=="__main__":
         model=CAEn(BOTTLE_SIZE)
     elif rep_typ=='wvlt':
         model=wvCAEn(BOTTLE_SIZE)
-    criterion = torch.nn.MSELoss()
-
+        
+    criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr = LR)
-
 
     if torch.cuda.is_available():
         print(torch.cuda.get_device_name(0))
@@ -142,8 +143,8 @@ if __name__=="__main__":
             # forward pass: compute predicted outputs by passing inputs to the model
             if rep_typ == 'spec':
                 data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
-            elif rep_typ=='wvlt':
-                data_val=torch.reshape(data,[BATCH_SIZE,1,NFR,NBF])
+#             elif rep_typ=='wvlt':
+#                 data_val=torch.reshape(data,[BATCH_SIZE,1,NFR,NBF])
             
             data_val=data_val.float()
             if torch.cuda.is_available():

@@ -12,6 +12,7 @@ import os
 from CAE import CAEn
 from RAE import RAEn
 from wvCAE import wvCAEn
+from wvRAE import wvRAEn
 from scipy.io.wavfile import read
 import scipy
 import torch
@@ -20,6 +21,7 @@ from librosa.feature import melspectrogram
 import pywt
 import scaleogram as scg
 import numpy as np
+import cv2
 import warnings
 warnings.filterwarnings("ignore", message="WavFileWarning: Chunk (non-data) not understood, skipping it.")
 
@@ -41,7 +43,7 @@ COI_DEFAULTS = {
 
 class AEspeech:
 
-    def __init__(self,model,units,fs=16000,rep='spec',nmels=128,waveletype='morl'):
+    def __init__(self,model,units,rep='spec',nmels=128,waveletype='morl'):
         """
         Feature extraction from speech signals based on representation learning strategies using convolutional and recurrent autoencoders
         :param model: type of autoencoder to extract the features from ('CAE': convolutional autoencoders, 'RAE': recurrent autoencoder)
@@ -50,6 +52,7 @@ class AEspeech:
         """
         self.model_type=model
         self.units=units
+        self.rep=rep
         self.PATH=os.path.dirname(os.path.abspath(__file__))
 #         try:
         scalers = pd.read_csv(self.PATH+"/scales.csv")
@@ -58,7 +61,6 @@ class AEspeech:
 #         except:
 #             print("Scalers not found..")
             
-        self.fs=fs
         self.nmels=nmels
         self.waveletype = waveletype
         
@@ -83,12 +85,20 @@ class AEspeech:
                     self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt', map_location='cpu'))
                     
         elif model=="RAE":
-            self.AE=RAEn(units)
-            if torch.cuda.is_available():
-                self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt'))
-                self.AE.cuda()
-            else:
-                self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt', map_location='cpu'))
+            if rep=='spec':
+                self.AE=RAEn(units)
+                if torch.cuda.is_available():
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt'))
+                    self.AE.cuda()
+                else:
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt', map_location='cpu'))
+            elif rep=='wvlt':
+                self.AE=wvRAEn(units)
+                if torch.cuda.is_available():
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt'))
+                    self.AE.cuda()
+                else:
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_RAE.pt', map_location='cpu'))
 
         else:
             raise ValueError("Model "+model+" is not valid. Please choose only CAE or RAE")
@@ -102,19 +112,22 @@ class AEspeech:
         :returns: Pytorch tensor (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of Mel frequencies (128), T: time steps (126)
         """        
         
+        FS=16000
         NFFT=512
         FRAME_SIZE=0.5
         TIME_SHIFT=0.25
         HOP=64
             
         fs_in, signal=read(wav_file)
-#         signal = scipy.signal.resample(signal,self.fs)
         
+        if fs_in!=16000:
+            raise ValueError(str(fs)+" is not a valid sampling frequency")
+            
         signal=signal-np.mean(signal)
         signal=signal/np.max(np.abs(signal))
         init=0
-        endi=int(FRAME_SIZE*self.fs)
-        nf=int(len(signal)/(TIME_SHIFT*self.fs))-1
+        endi=int(FRAME_SIZE*FS)
+        nf=int(len(signal)/(TIME_SHIFT*FS))-1
         
         if nf>0:
             mat=torch.zeros(nf,1,self.nmels,126)
@@ -122,9 +135,9 @@ class AEspeech:
             for k in range(nf):
                 try:
                     frame=signal[init:endi]
-                    imag=melspectrogram(frame, sr=self.fs, n_fft=NFFT, hop_length=HOP, n_mels=self.nmels, fmax=self.fs/2)
-                    init=init+int(TIME_SHIFT*self.fs)
-                    endi=endi+int(TIME_SHIFT*self.fs)
+                    imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=self.nmels, fmax=FS/2)
+                    init=init+int(TIME_SHIFT*FS)
+                    endi=endi+int(TIME_SHIFT*FS)
                     if np.min(np.min(imag))<=0:
                         warnings.warn("There is Inf values in the Mel spectrogram")
                         continue
@@ -133,8 +146,8 @@ class AEspeech:
                     mat[j,:,:,:]=imagt
                     j+=1
                 except:
-                    init=init+int(TIME_SHIFT*self.fs)
-                    endi=endi+int(TIME_SHIFT*self.fs)
+                    init=init+int(TIME_SHIFT*FS)
+                    endi=endi+int(TIME_SHIFT*FS)
                     warnings.warn("There is non valid values in the wav file")
         else:
             raise ValueError("WAV file is too short to compute the Mel spectrogram tensor")
@@ -149,35 +162,43 @@ class AEspeech:
         :returns: Pytorch tensor (N, C, F, T). N: one file per method call C: number of channels (1),  F: number of bands, T: Number of Samples
         """
         
-        SAMPLE_PERIOD = 3200
-        HOP = 50
-        NUM_BANDS = SAMPLE_PERIOD//HOP
-        self.fs = 16000
-        
-        if wav_file.find('.wav')==-1 and wav_file.find('.WAV')==-1:
-            raise ValueError(wav_file+" is not a valid audio file")
-        fs_in, signal=read(wav_file)
-#         signal = scipy.signal.resample(signal,self.fs)
-        signal_new = signal - np.mean(signal)
-        signal_new = signal_new/np.max(np.abs(signal_new))
-        time=np.arange(self.fs)
+        fs,signal=read(wav_file)
+        if fs!=16000:
+            raise ValueError(str(fs)+" is not a valid sampling frequency")
 
-        # range of scales to perform the transform
-        mat = torch.zeros(1,1,NUM_BANDS,self.fs)
+        SNIP_LEN=50 #Frame size in mS
+        NFR=int(signal.shape[0]*1000/(fs*SNIP_LEN)) #Number of frames (determined based off length of window)
+        FRAME_SIZE=int(signal.shape[0]/NFR) #Frame size in samples
+        OVRLP=0.5 #Overlap
+        SHIFT=int(FRAME_SIZE*OVRLP) #Time shift
+        NBF=64 #Number of band frequencies
+        TIME_STEPS=256
+        DIM=(TIME_STEPS,NBF)
+
+        signal=signal-np.mean(signal)
+        signal=signal/np.max(np.abs(signal))
+
+        init=0
+        endi=FRAME_SIZE
+
+        wv_mat=torch.zeros((NFR,1,NBF,TIME_STEPS))
+        freqs=np.zeros((NFR,NBF))
         
-        scales =  np.arange(1, SAMPLE_PERIOD, HOP)*pywt.central_frequency(self.waveletype)
-        cwt= scg.CWT(time,signal_new,scales)
-        coefs=cwt.coefs
-        freqs=cwt.scales_freq
-        coefs= np.log(np.abs(coefs))
-        mat[0,0,:,:]=torch.from_numpy(np.abs(coefs))
-        if volta==1:
-            return mat
-        else:
-            return coefs,freqs
+        for k in range(NFR):    
+            frame=signal[init:endi]                         
+            init=init+int(SHIFT)
+            endi=endi+int(SHIFT)
+            fpsi,freqs[k,:] = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
+
+            bicubic_img = cv2.resize(np.real(fpsi),DIM,interpolation=cv2.INTER_CUBIC)
+            
+            fpsit=torch.from_numpy(bicubic_img)
+            wv_mat[k,0,:,:]=fpsit
+            
+        return wv_mat,freqs
 
     
-    def show_spectrograms(self, spectrograms):
+    def show_spectrograms(self, spectrograms1,spectrograms2=None):
         """
         Visualization of the computed tensor of Mel-scale spectrograms to be used as input for the autoencoders from a wav file
         :param spectrograms: tensor of spectrograms obtained from '''compute_spectrograms(wav-file)'''
@@ -187,159 +208,191 @@ class AEspeech:
 
         f=np.round(700*(10**(m/2595)-1))
         f=f[::-1]
-        for k in range(spectrograms.shape[0]):
-            fig,  ax=plt.subplots(1, 1)
-            fig.set_size_inches(5, 5)
-#             mat=spectrograms.data[k,0,:,:]
-            mat=spectrograms.data.numpy()[k,0,:,:]
-            ax.imshow(np.flipud(mat), cmap=plt.cm.viridis, vmax=mat.max())
-            ax.set_yticks(np.linspace(0,128,11))
-            ax.set_yticklabels(map(str, f))
-            ax.set_xticks(np.linspace(0,126,6))
-            ax.set_xticklabels(map(str, np.linspace(0,500,6, dtype=np.int)))
-            ax.set_ylabel("Frequency (Hz)")
-            ax.set_xlabel("Time (ms)")
-            plt.tight_layout()
-            plt.show()
-
-
-    def show_scalogram(self, time, coefs=None, freqs=None, spectrum='amp', ax=None, cscale='linear', cmap='jet', clim=None,
-                      cbar='vertical', cbarlabel=None,cbarkw=None,figsize=(10, 4.0),yaxis='period', xlim=None,
-                      ylim=None, yscale='log',coi=False, ylabel="Period", xlabel="Time (s)", title=None):
-
-        SAMPLE_PERIOD = 3200
-        dt=time[1]-time[0]
         
-        if ax is None:
-            fig, ax = plt.subplots(figsize=figsize)
+        if torch.is_tensor(spectrograms2):
+            for k in range(spectrograms1.shape[0]):
+                fig,(ax1,ax2)=plt.subplots(ncols=2, figsize=(10,10))
+    
+                mat_curr=spectrograms1.data.numpy()[k,0,:,:]
+                ax1.imshow(np.flipud(mat_curr), cmap=plt.cm.viridis, vmax=mat_curr.max())
+                ax1.set_yticks(np.linspace(0,128,11))
+                ax1.set_yticklabels(map(str, f))
+                ax1.set_xticks(np.linspace(0,126,6))
+                ax1.set_xticklabels(map(str, np.linspace(0,500,6, dtype=np.int)))
+                ax1.set_ylabel("Frequency (Hz)")
+                ax1.set_xlabel("Time (ms)")
 
-        # adjust y axis ticks
-        scales_period = 1./freqs  # needed also for COI mask
-        xmesh = np.append(time,time[-1]+dt)
-        if yaxis == 'period':
-            ymesh = np.concatenate([scales_period, [scales_period[-1]+dt]])
-            ylim  = ymesh[[-1,0]] if ylim is None else ylim
-            ax.set_ylabel("Period" if ylabel is None else ylabel)
-        elif yaxis == 'frequency':
-            df    = freqs[-1]/freqs[-2]
-            ymesh = np.concatenate([freqs, [freqs[-1]*df]])
-            # set a useful yscale default: the scale freqs appears evenly in logscale
-            yscale = 'log' if yscale is None else yscale
-            ylim   = ymesh[[-1, 0]] if ylim is None else ylim
-            ax.set_ylabel("Frequency" if ylabel is None else ylabel)
-            #ax.invert_yaxis()
+                to_curr=spectrograms2.data.numpy()[k,0,:,:]
+                ax2.imshow(np.flipud(to_curr), cmap=plt.cm.viridis, vmax=to_curr.max())
+                ax2.set_yticks(np.linspace(0,128,11))
+                ax2.set_yticklabels(map(str, f))
+                ax2.set_xticks(np.linspace(0,126,6))
+                ax2.set_xticklabels(map(str, np.linspace(0,500,6, dtype=np.int)))
+                ax2.set_ylabel("Frequency (Hz)")
+                ax2.set_xlabel("Time (ms)")
+                plt.tight_layout()
+                plt.show()
+           
         else:
-            raise ValueError("yaxis must be one of 'frequency' or 'period', found "
-                              + str(yaxis)+" instead")
+            spectrograms=spectrograms1
+            
+            for k in range(spectrograms.shape[0]):
+                fig,  ax=plt.subplots(1, 1)
+                fig.set_size_inches(5, 5)
+    #             mat=spectrograms.data[k,0,:,:]
+                mat=spectrograms.data.numpy()[k,0,:,:]
+                ax.imshow(np.flipud(mat), cmap=plt.cm.viridis, vmax=mat.max())
+                ax.set_yticks(np.linspace(0,128,11))
+                ax.set_yticklabels(map(str, f))
+                ax.set_xticks(np.linspace(0,126,6))
+                ax.set_xticklabels(map(str, np.linspace(0,500,6, dtype=np.int)))
+                ax.set_ylabel("Frequency (Hz)")
+                ax.set_xlabel("Time (ms)")
+                plt.tight_layout()
+                plt.show()
+            
 
-        # limit of visual range
-        xr = [time.min(), time.max()]
-        if xlim is None:
-            xlim = xr
-        else:
-            ax.set_xlim(*xlim)
-        if ylim is not None:
-            ax.set_ylim(*ylim)
 
-        # adjust logarithmic scales on request (set automatically in Frequency mode)
-        if yscale is not None:
-            ax.set_yscale(yscale)
 
-        # choose the correct spectrum display function and name
-        if spectrum == 'amp':
-            values = np.abs(coefs)
-            sp_title = "Amplitude"
-            cbarlabel= "abs(CWT)" if cbarlabel is None else cbarlabel
-        elif spectrum == 'real':
-            values = np.real(coefs)
-            sp_title = "Real"
-            cbarlabel= "real(CWT)" if cbarlabel is None else cbarlabel
-        elif spectrum == 'imag':
-            values = np.imag(coefs)
-            sp_title = "Imaginary"
-            cbarlabel= "imaginary(CWT)" if cbarlabel is None else cbarlabel
-        elif spectrum == 'power':
-            sp_title = "Power"
-            cbarlabel= "abs(CWT)$^2$" if cbarlabel is None else cbarlabel
-            values = np.power(np.abs(coefs),2)
-        elif hasattr(spectrum, '__call__'):
-            sp_title = "Custom"
-            values = spectrum(coefs)
-        else:
-            raise ValueError("The spectrum parameter must be one of 'amp', 'real', 'imag',"+
-                             "'power' or a lambda() expression")
+    def show_scalograms(self, time, coefs=None, freqs=None, hop=50, spectrum='amp', ax=None, cscale='linear', cmap='jet', clim=None,
+                  cbar='vertical', cbarlabel=None,cbarkw=None,figsize=(10, 4.0),yaxis='frequency', xlim=None, ylim=None, yscale='log', 
+                  coi=False,ylabel="Frequency", xlabel="Time (s)", title=None):
+    
+        CBAR_DEFAULTS = {'vertical'   : { 'aspect':30, 'pad':0.03, 'fraction':0.05 },'horizontal' : { 'aspect':40, 'pad':0.12, 'fraction':0.05 }}
 
-        # labels and titles
-        ax.set_title("Continuous Wavelet Transform "+sp_title+" Spectrum"
-                     if title is None else title)
-        ax.set_xlabel("Time/spatial domain" if xlabel is None else xlabel )
-        if max(time)/FS>1:
-            ax.set_xticklabels(map(str, np.linspace(0,max(time)/FS,6, dtype=np.int)))
-        else:
-            ax.set_xticklabels(map(str, np.linspace(0,(max(time)/FS)*1000,6, dtype=np.int)))
-            ax.set_xlabel('Time (ms)')
+        COI_DEFAULTS = {'alpha':'0.5','hatch':'/'}
 
-        if cscale == 'log':
-            isvalid = (values > 0)
-            cnorm = LogNorm(values[isvalid].min(), values[isvalid].max())
-        elif cscale == 'linear':
-            cnorm = None
-        else:
-            raise ValueError("Color bar cscale should be 'linear' or 'log', got:"+
-                             str(cscale))
+        FS=16000
+        coefs=coefs.data.numpy()
+        for k in range(coefs.shape[0]):
+            coef_curr=coefs[k,0,:,:]
+            freq=freqs[k,:]
+            
+            fig,ax=plt.subplots(1, 1)
+            fig.set_size_inches(5, 5)
 
-        # plot the 2D spectrum using a pcolormesh to specify the correct Y axis
-        # location at each scale
-        qmesh = ax.pcolormesh(xmesh, ymesh, values, cmap=cmap, norm=cnorm)
-
-        if clim:
-            qmesh.set_clim(*clim)
-
-        # fill visually the Cone Of Influence
-        # (locations subject to invalid coefficients near the borders of data)
-        if coi:
-            # convert the wavelet scales frequency into time domain periodicity
-            scales_coi = scales_period
-            max_coi  = scales_coi[-1]
-
-            # produce the line and the curve delimiting the COI masked area
-            mid = int(len(xmesh)/2)
-            time0 = np.abs(xmesh[0:mid+1]-xmesh[0])
-            ymask = np.zeros(len(xmesh), dtype=np.float16)
-            ymhalf= ymask[0:mid+1]  # compute the left part of the mask
-            ws    = np.argsort(scales_period) # ensure np.interp() works
-            minscale, maxscale = sorted(ax.get_ylim())
+            # adjust y axis ticks
+            scales_period = np.divide(1,freq)  # needed also for COI mask
+            xmesh = np.concatenate([time, [time[-1]+hop]])
             if yaxis == 'period':
-                ymhalf[:] = np.interp(time0,
-                      scales_period[ws], scales_coi[ws])
-                yborder = np.zeros(len(xmesh)) + maxscale
-                ymhalf[time0 > max_coi]   = maxscale
+                ymesh = np.concatenate([scales_period, [scales_period[-1]]])
+                ylim  = ymesh[[-1,0]] if ylim is None else ylim
+                ax.set_ylabel("Period" if ylabel is None else ylabel)
             elif yaxis == 'frequency':
-                ymhalf[:] = np.interp(time0,
-                      scales_period[ws], 1./scales_coi[ws])
-                yborder = np.zeros(len(xmesh)) + minscale
-                ymhalf[time0 > max_coi]   = minscale
-            elif yaxis == 'scale':
-                ymhalf[:] = np.interp(time0, scales_coi, scales)
-                yborder = np.zeros(len(xmesh)) + maxscale
-                ymhalf[time0 > max_coi]   = maxscale
+                df = freq[-1]/freq[-2]
+                ymesh = np.concatenate([freq, [freq[-1]*df]])
+                # set a useful yscale default: the scale freqs appears evenly in logscale
+                yscale = 'log' if yscale is None else yscale
+                ylim   = ymesh[[-1, 0]] if ylim is None else ylim
+                ax.set_ylabel("Frequency" if ylabel is None else ylabel)
+                #ax.invert_yaxis()
             else:
-                raise ValueError("yaxis="+str(yaxis))
+                raise ValueError("yaxis must be one of 'frequency' or 'period', found "
+                                  + str(yaxis)+" instead")
 
-            # complete the right part of the mask by symmetry
-            ymask[-mid:] = ymhalf[0:mid][::-1]
+            # limit of visual range
+            xr = [time.min(), time.max()]
+            if xlim is None:
+                xlim = xr
+            else:
+                ax.set_xlim(*xlim)
+            if ylim is not None:
+                ax.set_ylim(*ylim)
 
-            # plot the mask and forward user parameters
-            plt.plot(xmesh, ymask)
-            coikw = COI_DEFAULTS if coikw is None else coikw
-            ax.fill_between(xmesh, yborder, ymask, **coikw )
+            # adjust logarithmic scales on request (set automatically in Frequency mode)
+            if yscale is not None:
+                ax.set_yscale(yscale)
 
-        # color bar stuff
-        if cbar:
-            cbarkw   = CBAR_DEFAULTS[cbar] if cbarkw is None else cbarkw
-            colorbar = plt.colorbar(qmesh, orientation=cbar, ax=ax, **cbarkw)
-            if cbarlabel:
-                colorbar.set_label(cbarlabel)
+            # choose the correct spectrum display function and name
+            if spectrum == 'amp':
+                values = np.abs(coef_curr)
+                sp_title = "Amplitude"
+                cbarlabel= "abs(CWT)" if cbarlabel is None else cbarlabel
+            elif spectrum == 'real':
+                values = np.real(coef_curr)
+                sp_title = "Real"
+                cbarlabel= "real(CWT)" if cbarlabel is None else cbarlabel
+            elif spectrum == 'imag':
+                values = np.imag(coef_curr)
+                sp_title = "Imaginary"
+                cbarlabel= "imaginary(CWT)" if cbarlabel is None else cbarlabel
+            elif spectrum == 'power':
+                sp_title = "Power"
+                cbarlabel= "abs(CWT)$^2$" if cbarlabel is None else cbarlabel
+                values = np.power(np.abs(coef_curr),2)
+            elif hasattr(spectrum, '__call__'):
+                sp_title = "Custom"
+                values = spectrum(coef_curr)
+            else:
+                raise ValueError("The spectrum parameter must be one of 'amp', 'real', 'imag',"+
+                                 "'power' or a lambda() expression")
+
+            # labels and titles
+            ax.set_title("Continuous Wavelet Transform "+sp_title+" Spectrum"
+                         if title is None else title)
+            ax.set_xlabel("Time/spatial domain" if xlabel is None else xlabel )
+            if max(time)/FS>1:
+                ax.set_xticklabels(map(str, np.linspace(0,max(time)/FS,6, dtype=np.int)))
+            else:
+                ax.set_xticklabels(map(str, np.linspace(0,(max(time)/FS)*1000,10, dtype=np.int)))
+                ax.set_xlabel('Time (ms)')
+
+            if cscale == 'log':
+                isvalid = (values > 0)
+                cnorm = LogNorm(values[isvalid].min(), values[isvalid].max())
+            elif cscale == 'linear':
+                cnorm = None
+            else:
+                raise ValueError("Color bar cscale should be 'linear' or 'log', got:"+
+                                 str(cscale))
+
+            # plot the 2D spectrum using a pcolormesh to specify the correct Y axis
+            # location at each scale
+            qmesh = ax.pcolormesh(xmesh, ymesh, values, cmap=cmap, norm=cnorm)
+
+            if clim:
+                qmesh.set_clim(*clim)
+
+            # fill visually the Cone Of Influence
+            # (locations subject to invalid coefficients near the borders of data)
+            if coi:
+                # convert the wavelet scales frequency into time domain periodicity
+                scales_coi = scales_period
+                max_coi  = scales_coi[-1]
+
+                # produce the line and the curve delimiting the COI masked area
+                mid = int(len(xmesh)/2)
+                time0 = np.abs(xmesh[0:mid+1]-xmesh[0])
+                ymask = np.zeros(len(xmesh), dtype=np.float16)
+                ymhalf= ymask[0:mid+1]  # compute the left part of the mask
+                ws    = np.argsort(scales_period) # ensure np.interp() works
+                minscale, maxscale = sorted(ax.get_ylim())
+                if yaxis == 'period':
+                    ymhalf[:] = np.interp(time0,
+                          scales_period[ws], scales_coi[ws])
+                    yborder = np.zeros(len(xmesh)) + maxscale
+                    ymhalf[time0 > max_coi]   = maxscale
+                elif yaxis == 'frequency':
+                    ymhalf[:] = np.interp(time0,
+                          scales_period[ws], 1./scales_coi[ws])
+                    yborder = np.zeros(len(xmesh)) + minscale
+                    ymhalf[time0 > max_coi]   = minscale
+                elif yaxis == 'scale':
+                    ymhalf[:] = np.interp(time0, scales_coi, scales)
+                    yborder = np.zeros(len(xmesh)) + maxscale
+                    ymhalf[time0 > max_coi]   = maxscale
+                else:
+                    raise ValueError("yaxis="+str(yaxis))
+
+                # complete the right part of the mask by symmetry
+                ymask[-mid:] = ymhalf[0:mid][::-1]
+
+            # color bar stuff
+            if cbar:
+                cbarkw   = CBAR_DEFAULTS[cbar] if cbarkw is None else cbarkw
+                colorbar = plt.colorbar(qmesh, orientation=cbar, ax=ax, **cbarkw)
+                if cbarlabel:
+                    colorbar.set_label(cbarlabel)
 
         return ax
 
@@ -370,9 +423,12 @@ class AEspeech:
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (nf, h) or numpy array (nf, h) with the extracted features. nf: number of frames, size of the bottleneck space
         """
-
-        mat=self.compute_spectrograms(wav_file)
-        mat=self.standard(mat)
+        if self.rep=='spec':
+            mat=self.compute_spectrograms(wav_file)
+            mat=self.standard(mat)
+        else:
+            mat=self.compute_cwt(wav_file)
+            
         if torch.cuda.is_available():
             mat=mat.cuda()
         to, bot=self.AE.forward(mat)
@@ -388,8 +444,12 @@ class AEspeech:
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (nf, 128) or numpy array (nf, 128) with the extracted features. nf: number of frames
         """
-        mat=self.compute_spectrograms(wav_file)
-        mat=self.standard(mat)
+        if self.rep=='spec':
+            mat=self.compute_spectrograms(wav_file)
+            mat=self.standard(mat)
+        else:
+            mat=self.compute_cwt(wav_file)
+            
         if torch.cuda.is_available():
             mat=mat.cuda()
         to, bot=self.AE.forward(mat)
@@ -433,7 +493,7 @@ class AEspeech:
         """
 
         if os.path.isdir(wav_directory):
-            hf=os.listdir(wav_directory)
+            hf=[name for name in os.listdir(wav_directory) if '.wav' in name]
             hf.sort()
         else:
             raise ValueError(wav_directory+" is not a valid directory")
@@ -471,7 +531,7 @@ class AEspeech:
         """
 
         if os.path.isdir(wav_directory):
-            hf=os.listdir(wav_directory)
+            hf=[name for name in os.listdir(wav_directory) if '.wav' in name]
             hf.sort()
         else:
             raise ValueError(wav_directory+" is not a valid directory")
@@ -543,28 +603,3 @@ class AEspeech:
         else:
 
             return df1, df2
-
-        
-    def mel2speech(self,spec_signal):
-        """
-        Return speech file given a tensor to numpy version of a spectrogram. Input expected is of shape: 
-        (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of Mel frequencies (128), T: time steps (126)
-        
-        :spec_signal: tensor of shape as described above.
-        :return: numpy array of the speech represetatiion  of the input spectrogam
-        """
-        FS=16000
-        NFFT=512  
-        HOP=64
-
-        spec_signal=np.squeeze(spec_signal,axis=1)
-        speech_signal=np.array([])
-        num_batches=np.shape(spec_signal)[0]
-
-        for k in range(num_batches):
-            if k==0:
-                speech_signal=librosa.feature.inverse.mel_to_audio((spec_signal[k,:,:]),sr=FS,n_fft=NFFT, hop_length=HOP)
-            else:
-                np.append(speech_signal,librosa.feature.inverse.mel_to_audio((spec_signal[k,:,:]),sr=FS,n_fft=NFFT, hop_length=HOP))
-
-        return speech_signal

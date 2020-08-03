@@ -26,7 +26,7 @@ import warnings
 warnings.filterwarnings("ignore", message="WavFileWarning: Chunk (non-data) not understood, skipping it.")
 
 import matplotlib.pyplot as plt
-import pandas as pd
+# import pandas as pd
 import scipy.stats as st
 
 CBAR_DEFAULTS = {
@@ -56,8 +56,8 @@ class AEspeech:
         self.PATH=os.path.dirname(os.path.abspath(__file__))
 #         try:
         scalers = pd.read_csv(self.PATH+"/scales.csv")
-        self.min_scaler = float(scalers['Min Scale']) #MIN value of total energy.
-        self.max_scaler = float(scalers['Max Scale'])  #MAX value of total energy.
+        self.min_scaler = float(scalers['Min '+rep+' Scale']) #MIN value of total energy.
+        self.max_scaler = float(scalers['Max '+rep+' Scale'])  #MAX value of total energy.
 #         except:
 #             print("Scalers not found..")
             
@@ -254,7 +254,7 @@ class AEspeech:
 
 
 
-    def show_scalograms(self, time, coefs=None, freqs=None, hop=50, spectrum='amp', ax=None, cscale='linear', cmap='jet', clim=None,
+    def show_scalograms(self, time, coefs1, coefs2=None, freqs=None, hop=50, spectrum='amp', ax=None, cscale='linear', cmap='jet', clim=None,
                   cbar='vertical', cbarlabel=None,cbarkw=None,figsize=(10, 4.0),yaxis='frequency', xlim=None, ylim=None, yscale='log', 
                   coi=False,ylabel="Frequency", xlabel="Time (s)", title=None):
     
@@ -262,139 +262,127 @@ class AEspeech:
 
         COI_DEFAULTS = {'alpha':'0.5','hatch':'/'}
 
+        mmax=2595*np.log10(1+8000/700)
+        m=np.linspace(0,mmax,11)
+
+        f=np.round(700*(10**(m/2595)-1))
+        f=f[::-1]
+        
         FS=16000
-        coefs=coefs.data.numpy()
-        for k in range(coefs.shape[0]):
-            coef_curr=coefs[k,0,:,:]
+        SNIP_LEN=50
+
+        for k in range(coefs1.shape[0]):
+            if torch.is_tensor(coefs2):
+                coefs=[coefs1[k,0,:,:],coefs2[k,0,:,:]]
+                fig,(ax1,ax2)=plt.subplots(ncols=2, figsize=(11,5))
+                axs=[ax1,ax2]
+            else:
+                coefs=[coefs1[k,0,:,:]]
+                fig,ax=plt.subplots(1, 1)
+                fig.set_size_inches(11, 5)
+                axs=[ax]
+
             freq=freqs[k,:]
             
-            fig,ax=plt.subplots(1, 1)
-            fig.set_size_inches(5, 5)
-
-            # adjust y axis ticks
-            scales_period = np.divide(1,freq)  # needed also for COI mask
-            xmesh = np.concatenate([time, [time[-1]+hop]])
-            if yaxis == 'period':
-                ymesh = np.concatenate([scales_period, [scales_period[-1]]])
-                ylim  = ymesh[[-1,0]] if ylim is None else ylim
-                ax.set_ylabel("Period" if ylabel is None else ylabel)
-            elif yaxis == 'frequency':
-                df = freq[-1]/freq[-2]
-                ymesh = np.concatenate([freq, [freq[-1]*df]])
-                # set a useful yscale default: the scale freqs appears evenly in logscale
-                yscale = 'log' if yscale is None else yscale
-                ylim   = ymesh[[-1, 0]] if ylim is None else ylim
-                ax.set_ylabel("Frequency" if ylabel is None else ylabel)
-                #ax.invert_yaxis()
-            else:
-                raise ValueError("yaxis must be one of 'frequency' or 'period', found "
-                                  + str(yaxis)+" instead")
-
-            # limit of visual range
-            xr = [time.min(), time.max()]
-            if xlim is None:
-                xlim = xr
-            else:
-                ax.set_xlim(*xlim)
-            if ylim is not None:
-                ax.set_ylim(*ylim)
-
-            # adjust logarithmic scales on request (set automatically in Frequency mode)
-            if yscale is not None:
-                ax.set_yscale(yscale)
-
-            # choose the correct spectrum display function and name
-            if spectrum == 'amp':
-                values = np.abs(coef_curr)
-                sp_title = "Amplitude"
-                cbarlabel= "abs(CWT)" if cbarlabel is None else cbarlabel
-            elif spectrum == 'real':
-                values = np.real(coef_curr)
-                sp_title = "Real"
-                cbarlabel= "real(CWT)" if cbarlabel is None else cbarlabel
-            elif spectrum == 'imag':
-                values = np.imag(coef_curr)
-                sp_title = "Imaginary"
-                cbarlabel= "imaginary(CWT)" if cbarlabel is None else cbarlabel
-            elif spectrum == 'power':
-                sp_title = "Power"
-                cbarlabel= "abs(CWT)$^2$" if cbarlabel is None else cbarlabel
-                values = np.power(np.abs(coef_curr),2)
-            elif hasattr(spectrum, '__call__'):
-                sp_title = "Custom"
-                values = spectrum(coef_curr)
-            else:
-                raise ValueError("The spectrum parameter must be one of 'amp', 'real', 'imag',"+
-                                 "'power' or a lambda() expression")
-
-            # labels and titles
-            ax.set_title("Continuous Wavelet Transform "+sp_title+" Spectrum"
-                         if title is None else title)
-            ax.set_xlabel("Time/spatial domain" if xlabel is None else xlabel )
-            if max(time)/FS>1:
-                ax.set_xticklabels(map(str, np.linspace(0,max(time)/FS,6, dtype=np.int)))
-            else:
-                ax.set_xticklabels(map(str, np.linspace(0,(max(time)/FS)*1000,10, dtype=np.int)))
-                ax.set_xlabel('Time (ms)')
-
-            if cscale == 'log':
-                isvalid = (values > 0)
-                cnorm = LogNorm(values[isvalid].min(), values[isvalid].max())
-            elif cscale == 'linear':
-                cnorm = None
-            else:
-                raise ValueError("Color bar cscale should be 'linear' or 'log', got:"+
-                                 str(cscale))
-
-            # plot the 2D spectrum using a pcolormesh to specify the correct Y axis
-            # location at each scale
-            qmesh = ax.pcolormesh(xmesh, ymesh, values, cmap=cmap, norm=cnorm)
-
-            if clim:
-                qmesh.set_clim(*clim)
-
-            # fill visually the Cone Of Influence
-            # (locations subject to invalid coefficients near the borders of data)
-            if coi:
-                # convert the wavelet scales frequency into time domain periodicity
-                scales_coi = scales_period
-                max_coi  = scales_coi[-1]
-
-                # produce the line and the curve delimiting the COI masked area
-                mid = int(len(xmesh)/2)
-                time0 = np.abs(xmesh[0:mid+1]-xmesh[0])
-                ymask = np.zeros(len(xmesh), dtype=np.float16)
-                ymhalf= ymask[0:mid+1]  # compute the left part of the mask
-                ws    = np.argsort(scales_period) # ensure np.interp() works
-                minscale, maxscale = sorted(ax.get_ylim())
+            for ii,(coefs_curr,ax) in enumerate(zip(coefs,axs)):
+                coefs_curr=coefs_curr.data.numpy()
+                
+                # adjust y axis ticks
+                scales_period = np.divide(1,freq)  # needed also for COI mask
+                xmesh = np.concatenate([time, [time[-1]+hop]])
                 if yaxis == 'period':
-                    ymhalf[:] = np.interp(time0,
-                          scales_period[ws], scales_coi[ws])
-                    yborder = np.zeros(len(xmesh)) + maxscale
-                    ymhalf[time0 > max_coi]   = maxscale
+                    ymesh = np.concatenate([scales_period, [scales_period[-1]]])
+                    ylim  = ymesh[[-1,0]] if ylim is None else ylim
+                    ax.set_ylabel("Period" if ylabel is None else ylabel)
                 elif yaxis == 'frequency':
-                    ymhalf[:] = np.interp(time0,
-                          scales_period[ws], 1./scales_coi[ws])
-                    yborder = np.zeros(len(xmesh)) + minscale
-                    ymhalf[time0 > max_coi]   = minscale
-                elif yaxis == 'scale':
-                    ymhalf[:] = np.interp(time0, scales_coi, scales)
-                    yborder = np.zeros(len(xmesh)) + maxscale
-                    ymhalf[time0 > max_coi]   = maxscale
+                    df = freq[-1]/freq[-2]
+                    ymesh = np.concatenate([freq, [freq[-1]*df]])
+                    # set a useful yscale default: the scale freqs appears evenly in logscale
+                    yscale = 'log' if yscale is None else yscale
+                    ylim   = ymesh[[-1, 0]] if ylim is None else ylim
+                    ax.set_ylabel("Frequency" if ylabel is None else ylabel)
+    #                 ax.invert_yaxis()
                 else:
-                    raise ValueError("yaxis="+str(yaxis))
+                    raise ValueError("yaxis must be one of 'frequency' or 'period', found "
+                                      + str(yaxis)+" instead")
 
-                # complete the right part of the mask by symmetry
-                ymask[-mid:] = ymhalf[0:mid][::-1]
+                # limit of visual range
+                xr = [time.min(), time.max()]
+                if xlim is None:
+                    xlim = xr
+                else:
+                    ax.set_xlim(*xlim)
+                if ylim is not None:
+                    ax.set_ylim(*ylim)
 
-            # color bar stuff
-            if cbar:
-                cbarkw   = CBAR_DEFAULTS[cbar] if cbarkw is None else cbarkw
-                colorbar = plt.colorbar(qmesh, orientation=cbar, ax=ax, **cbarkw)
-                if cbarlabel:
-                    colorbar.set_label(cbarlabel)
+                # adjust logarithmic scales on request (set automatically in Frequency mode)
+                if yscale is not None:
+                    ax.set_yscale(yscale)
 
-        return ax
+
+                # choose the correct spectrum display function and name
+                if spectrum == 'amp':
+                    values = np.abs(coefs_curr)
+                    sp_title = "Amplitude"
+                    cbarlabel= "abs(CWT)" if cbarlabel is None else cbarlabel
+                elif spectrum == 'real':
+                    values = np.real(coefs_curr)
+                    sp_title = "Real"
+                    cbarlabel= "real(CWT)" if cbarlabel is None else cbarlabel
+                elif spectrum == 'imag':
+                    values = np.imag(coefs_curr)
+                    sp_title = "Imaginary"
+                    cbarlabel= "imaginary(CWT)" if cbarlabel is None else cbarlabel
+                elif spectrum == 'power':
+                    sp_title = "Power"
+                    cbarlabel= "abs(CWT)$^2$" if cbarlabel is None else cbarlabel
+                    values = np.power(np.abs(coefs_curr),2)
+                elif hasattr(spectrum, '__call__'):
+                    sp_title = "Custom"
+                    values = spectrum(coefs_curr)
+                else:
+                    raise ValueError("The spectrum parameter must be one of 'amp', 'real', 'imag',"+
+                                     "'power' or a lambda() expression")
+
+                # labels and titles
+                if ii==0: 
+                    ax.set_title("Continuous Wavelet Transform "+sp_title+" Spectrum"
+                                 if title is None else title)
+                else:
+                    ax.set_title("Reconstructed Continuous Wavelet Transform")
+                    
+                ax.set_xlabel("Time/spatial domain" if xlabel is None else xlabel )
+                if max(time)/FS>1:
+                    ax.set_xticklabels(map(str, np.linspace(0,max(time)/FS,6, dtype=np.int)))
+                else:
+                    ax.set_xticklabels(map(str, np.linspace(0,SNIP_LEN,6, dtype=np.int)))
+                    ax.set_xlabel('Time (ms)')
+                    
+                ax.set_yticklabels(map(str, np.linspace(0,8000,10, dtype=np.int)))
+
+                if cscale == 'log':
+                    isvalid = (values > 0)
+                    cnorm = LogNorm(values[isvalid].min(), values[isvalid].max())
+                elif cscale == 'linear':
+                    cnorm = None
+                else:
+                    raise ValueError("Color bar cscale should be 'linear' or 'log', got:"+
+                                     str(cscale))
+
+                # plot the 2D spectrum using a pcolormesh to specify the correct Y axis
+                # location at each scale
+                qmesh = ax.pcolormesh(xmesh, ymesh, values, cmap=cmap)
+#                 plt.show()
+#                 plt.tight_layout()
+#                 plt.show()
+    #             # color bar stuff
+    #             if cbar:
+    #                 cbarkw   = CBAR_DEFAULTS[cbar] if cbarkw is None else cbarkw
+    #                 colorbar = plt.colorbar(qmesh, orientation=cbar, ax=ax, **cbarkw)
+    #                 if cbarlabel:
+    #                     colorbar.set_label(cbarlabel)
+
+#     return ax1,ax2
 
             
     def standard(self, tensor):
@@ -428,6 +416,7 @@ class AEspeech:
             mat=self.standard(mat)
         else:
             mat=self.compute_cwt(wav_file)
+        
             
         if torch.cuda.is_available():
             mat=mat.cuda()
@@ -449,11 +438,12 @@ class AEspeech:
             mat=self.standard(mat)
         else:
             mat=self.compute_cwt(wav_file)
+        
             
         if torch.cuda.is_available():
             mat=mat.cuda()
         to, bot=self.AE.forward(mat)
-        
+
         to=self.destandard(to)
 
         mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
@@ -603,3 +593,6 @@ class AEspeech:
         else:
 
             return df1, df2
+   
+        
+    

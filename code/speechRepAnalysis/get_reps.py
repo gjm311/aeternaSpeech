@@ -2,6 +2,7 @@ import sys
 import os
 import torch
 import pywt
+import pandas as pd
 import scaleogram as scg 
 from scipy.io.wavfile import read
 import scipy
@@ -39,10 +40,10 @@ if __name__ == "__main__":
         os.makedirs(PATH_WVLT)
         
     if not os.path.exists(PATH_AUDIO+'/train/'):
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.2)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.1)
         split.fileTrTstSplit()
     elif len(os.listdir(PATH_AUDIO+'/train/'))<=2:
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.2)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.1)
         split.fileTrTstSplit()
     
     FS=16000
@@ -53,6 +54,12 @@ if __name__ == "__main__":
     NMELS=128
     DIM=()
     SNIP_LEN=50#in mS
+    
+    minSpec_en = np.inf
+    maxSpec_en = -np.inf
+    minWvlt_en = np.inf
+    maxWvlt_en = -np.inf
+    enrgy = {'Min spec Scale': [], 'Max spec Scale': [], 'Min wvlt Scale': [], 'Max wvlt Scale': []}
     
     for trtst in ['/train/', '/test/']:
         audio_path=PATH_AUDIO+trtst
@@ -93,15 +100,15 @@ if __name__ == "__main__":
                 continue            
                 
             NFR=int(data.shape[0]*1000/(FS*SNIP_LEN))
-            FRAME_SIZE=int(data.shape[0]/NFR)
+            WV_FRAME_SIZE=int(data.shape[0]/NFR)
             OVRLP=0.5
-            SHIFT=int(FRAME_SIZE*OVRLP)
+            SHIFT=int(WV_FRAME_SIZE*OVRLP)
             NBF=64
             TIME_STEPS=256
             DIM=(TIME_STEPS,NBF)
                 
             init=0
-            endi=FRAME_SIZE
+            endi=WV_FRAME_SIZE
             wv_mat=np.zeros((1,NBF,TIME_STEPS),dtype=np.float32)
             
             for k in range(NFR):    
@@ -112,54 +119,68 @@ if __name__ == "__main__":
 
                 bicubic_img = cv2.resize(np.real(cwtmatr),DIM,interpolation=cv2.INTER_CUBIC)
                 
+                #Looking for min/max coefficients for standardization.
+                max_curr = np.max(bicubic_img)
+                min_curr = np.min(bicubic_img)
+                if max_curr > maxWvlt_en:
+                    maxWvlt_en = max_curr
+                if min_curr < minWvlt_en:
+                    minWvlt_en = min_curr    
+                
                 wv_mat[0,:,:]=bicubic_img
                 np.save(file_wvlt_out+"_"+str(k)+".npy",wv_mat)
     
-    
-#             init=0
-#             num_samples=int(FRAME_SIZE*FS)
-#             endi=num_samples
+            init=0
+            num_samples=int(FRAME_SIZE*FS)
+            endi=num_samples
             
-# #             #Create wavelet basis and get necessary dimensions to scale to 128 time steps
-# #             [freqs,psi,phi]=create_wavelets(num_samples,nbf=NBF,dil=DIL)
+#             #Create wavelet basis and get necessary dimensions to scale to 128 time steps
+#             [freqs,psi,phi]=create_wavelets(num_samples,nbf=NBF,dil=DIL)
             
             
-#             nf=int(len(data)/(TIME_SHIFT*FS))-1
-#             if nf>0:
-# #                 mat=np.zeros((1,NMELS,126), dtype=np.float32)
-#                 for k in range(nf):
-# #                     try:
-#                     frame=data[init:endi]
-# #                         imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS/2)
+            nf=int(len(data)/(TIME_SHIFT*FS))-1
+            if nf>0:
+                mat=np.zeros((1,NMELS,126), dtype=np.float32)
+                for k in range(nf):
+                    try:
+                        frame=data[init:endi]
+                        imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS/2)
 
-# #                     w_scale_percent=NBF*4/fpsi.shape[1] # percent of original size
-# #                     width = int(fpsi.shape[1] * w_scale_percent)
-# #                     dim = (width,NBF)
-# #                     bicubic_img = cv2.resize(np.real(fpsi),dim,interpolation=cv2.INTER_CUBIC)
+                        init=init+int(TIME_SHIFT*FS)
+                        endi=endi+int(TIME_SHIFT*FS)
+                        if np.min(np.min(imag))<=0:
+                            countinf+=1
+                            continue
 
-#                     init=init+int(TIME_SHIFT*FS)
-#                     endi=endi+int(TIME_SHIFT*FS)
-# #                     if np.min(np.min(imag))<=0:
-# #                         countinf+=1
-# #                         continue
-# #                           imag=np.log(imag, dtype=np.float32)
-# #                         mat[0,:,:]=imag
-# #                         np.save(file_spec_out+"_"+str(k)+".npy",mat)
+                        imag=np.log(imag, dtype=np.float32)
+                        mat[0,:,:]=imag
+                        np.save(file_spec_out+"_"+str(k)+".npy",mat)
 
-# #                     except:
-# #                         init=init+int(TIME_SHIFT*FS)
-# #                         endi=endi+int(TIME_SHIFT*FS)
-# #                         countinf+=1
+                        max_curr = np.max(imag)
+                        min_curr = np.min(imag)
+                        if max_curr > maxSpec_en:
+                            maxSpec_en = max_curr
+                        if min_curr < minSpec_en:
+                            minSpec_en = min_curr    
 
-#             else:
-#                 print("WARNING, audio too short", hf[j], len(data))
-#                 countbad+=1
+                    except:
+                        init=init+int(TIME_SHIFT*FS)
+                        endi=endi+int(TIME_SHIFT*FS)
+                        countinf+=1
 
-           
+            else:
+                print("WARNING, audio too short", hf[j], len(data))
+                countbad+=1
+                
+    enrgy['Min wvlt Scale'].append(minWvlt_en)
+    enrgy['Max wvlt Scale'].append(maxWvlt_en)
+    enrgy['Min spec Scale'].append(minSpec_en)
+    enrgy['Max spec Scale'].append(maxSpec_en)
+    df = pd.DataFrame(data=enrgy)
+    df.to_csv(PATH+'/scales.csv')
 
-
-#     print(countbad)
-#     print(countinf)
+    print(countbad)
+    print(countinf)
 
 
 

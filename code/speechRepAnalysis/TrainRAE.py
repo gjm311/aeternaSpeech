@@ -34,8 +34,12 @@ if __name__=="__main__":
     path_rep=PATH+sys.argv[2]
     if 'wvlt' in sys.argv[2]:
         rep_typ='wvlt'
+        LR=0.001
+        BATCH_SIZE=8
     elif 'spec' in sys.argv[2]:
         rep_typ='spec'
+        LR=0.001
+        BATCH_SIZE=16
     else:
         print("Please correct directory path input...")
         sys.exit()
@@ -50,11 +54,9 @@ if __name__=="__main__":
    
     PATH_TRAIN=path_rep+"/train/"
     PATH_TEST=path_rep+"/test/"
-
-    BATCH_SIZE=16
+    
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
-    LR=0.001
     N_EPOCHS = 50
     SCALERS = pd.read_csv("scales.csv")
     MIN_SCALER= float(SCALERS['Min '+rep_typ+' Scale']) #MIN value of total energy.
@@ -69,7 +71,6 @@ if __name__=="__main__":
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
    
-
     train_loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     test_loader = torch.utils.data.DataLoader(test, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
 
@@ -103,7 +104,8 @@ if __name__=="__main__":
 
             # clear the gradients of all optimized variables
             optimizer.zero_grad()
-            data=standard(data, MIN_SCALER, MAX_SCALER)
+            if rep=='spec':
+                data=standard(data, MIN_SCALER, MAX_SCALER)
                 
             data=data.float()
 
@@ -133,7 +135,8 @@ if __name__=="__main__":
         model.eval() # prep model for evaluation
         for data_val in test_loader:
             # forward pass: compute predicted outputs by passing inputs to the model
-            data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
+            if rep=='spec':
+                data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
                 
             data_val=data_val.float()
             if torch.cuda.is_available():

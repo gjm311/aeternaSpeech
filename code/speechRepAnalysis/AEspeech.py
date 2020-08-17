@@ -26,7 +26,7 @@ import warnings
 warnings.filterwarnings("ignore", message="WavFileWarning: Chunk (non-data) not understood, skipping it.")
 
 import matplotlib.pyplot as plt
-# import pandas as pd
+import pandas as pd
 import scipy.stats as st
 
 CBAR_DEFAULTS = {
@@ -194,9 +194,11 @@ class AEspeech:
             
             fpsit=torch.from_numpy(bicubic_img)
             wv_mat[k,0,:,:]=fpsit
-            
-        return wv_mat,freqs
-
+        
+        if volta==1:
+            return wv_mat,freqs
+        else:
+            return wv_mat
     
     def show_spectrograms(self, spectrograms1,spectrograms2=None):
         """
@@ -415,7 +417,7 @@ class AEspeech:
             mat=self.compute_spectrograms(wav_file)
             mat=self.standard(mat)
         else:
-            mat=self.compute_cwt(wav_file)
+            mat=self.compute_cwt(wav_file,volta=0)
         
             
         if torch.cuda.is_available():
@@ -437,7 +439,7 @@ class AEspeech:
             mat=self.compute_spectrograms(wav_file)
             mat=self.standard(mat)
         else:
-            mat=self.compute_cwt(wav_file)
+            mat=self.compute_cwt(wav_file,volta=0)
         
             
         if torch.cuda.is_available():

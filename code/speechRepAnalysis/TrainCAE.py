@@ -53,10 +53,10 @@ if __name__=="__main__":
 
     PATH_TRAIN=path_rep+"/train/"
     PATH_TEST=path_rep+"/test/"
-    BATCH_SIZE=16
+    BATCH_SIZE=30
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
-    LR=0.0001
+    LR=0.01
     N_EPOCHS = 50
     SCALERS = pd.read_csv("scales.csv")
     MIN_SCALER= float(SCALERS['Min '+rep_typ+' Scale']) #MIN value of total energy.

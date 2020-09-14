@@ -22,7 +22,6 @@ class CAEenc(nn.Module):
         self.linear = nn.Linear(64*4*32, dim)
 
     def forward(self, x):
-
         x =F.leaky_relu((self.bn1(self.pool(self.conv1(x)))))
         x =F.leaky_relu((self.bn2(self.pool(self.conv2(x)))))
         x =F.leaky_relu((self.bn3(self.pool(self.conv3(x)))))

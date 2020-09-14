@@ -13,9 +13,9 @@ class pdn(nn.Module):
                 
     def forward(self, x):
         M = x.shape[1]
-        x=self.fc1(x)
+        x=F.leaky_relu(self.fc1(x))
         x=self.drop(x)
-        x=self.fc2(x)
-        x=self.fc3(x)
+        x=F.leaky_relu(self.fc2(x))
+        x=F.leaky_relu(self.fc3(x))
         x=F.softmax(x)
         return x

@@ -53,7 +53,7 @@ if __name__ == "__main__":
     HOP=64
     NMELS=128
     DIM=()
-    SNIP_LEN=50#in mS
+    SNIP_LEN=500#in mS
     
     minSpec_en = np.inf
     maxSpec_en = -np.inf
@@ -104,7 +104,7 @@ if __name__ == "__main__":
             OVRLP=0.5
             SHIFT=int(WV_FRAME_SIZE*OVRLP)
             NBF=64
-            TIME_STEPS=256
+            TIME_STEPS=512
             DIM=(TIME_STEPS,NBF)
                 
             init=0
@@ -138,49 +138,49 @@ if __name__ == "__main__":
 #             [freqs,psi,phi]=create_wavelets(num_samples,nbf=NBF,dil=DIL)
             
             
-            nf=int(len(data)/(TIME_SHIFT*FS))-1
-            if nf>0:
-                mat=np.zeros((1,NMELS,126), dtype=np.float32)
-                for k in range(nf):
-                    try:
-                        frame=data[init:endi]
-                        imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS/2)
+#             nf=int(len(data)/(TIME_SHIFT*FS))-1
+#             if nf>0:
+#                 mat=np.zeros((1,NMELS,126), dtype=np.float32)
+#                 for k in range(nf):
+#                     try:
+#                         frame=data[init:endi]
+#                         imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS/2)
 
-                        init=init+int(TIME_SHIFT*FS)
-                        endi=endi+int(TIME_SHIFT*FS)
-                        if np.min(np.min(imag))<=0:
-                            countinf+=1
-                            continue
+#                         init=init+int(TIME_SHIFT*FS)
+#                         endi=endi+int(TIME_SHIFT*FS)
+#                         if np.min(np.min(imag))<=0:
+#                             countinf+=1
+#                             continue
 
-                        imag=np.log(imag, dtype=np.float32)
-                        mat[0,:,:]=imag
-                        np.save(file_spec_out+"_"+str(k)+".npy",mat)
+#                         imag=np.log(imag, dtype=np.float32)
+#                         mat[0,:,:]=imag
+#                         np.save(file_spec_out+"_"+str(k)+".npy",mat)
 
-                        max_curr = np.max(imag)
-                        min_curr = np.min(imag)
-                        if max_curr > maxSpec_en:
-                            maxSpec_en = max_curr
-                        if min_curr < minSpec_en:
-                            minSpec_en = min_curr    
+#                         max_curr = np.max(imag)
+#                         min_curr = np.min(imag)
+#                         if max_curr > maxSpec_en:
+#                             maxSpec_en = max_curr
+#                         if min_curr < minSpec_en:
+#                             minSpec_en = min_curr    
 
-                    except:
-                        init=init+int(TIME_SHIFT*FS)
-                        endi=endi+int(TIME_SHIFT*FS)
-                        countinf+=1
+#                     except:
+#                         init=init+int(TIME_SHIFT*FS)
+#                         endi=endi+int(TIME_SHIFT*FS)
+#                         countinf+=1
 
-            else:
-                print("WARNING, audio too short", hf[j], len(data))
-                countbad+=1
+#             else:
+#                 print("WARNING, audio too short", hf[j], len(data))
+#                 countbad+=1
                 
-    enrgy['Min wvlt Scale'].append(minWvlt_en)
-    enrgy['Max wvlt Scale'].append(maxWvlt_en)
-    enrgy['Min spec Scale'].append(minSpec_en)
-    enrgy['Max spec Scale'].append(maxSpec_en)
-    df = pd.DataFrame(data=enrgy)
-    df.to_csv(PATH+'/scales.csv')
+#     enrgy['Min wvlt Scale'].append(minWvlt_en)
+#     enrgy['Max wvlt Scale'].append(maxWvlt_en)
+#     enrgy['Min spec Scale'].append(minSpec_en)
+#     enrgy['Max spec Scale'].append(maxSpec_en)
+#     df = pd.DataFrame(data=enrgy)
+#     df.to_csv(PATH+'/scales.csv')
 
-    print(countbad)
-    print(countinf)
+#     print(countbad)
+#     print(countinf)
 
 
 

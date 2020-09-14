@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     unit=256
     if rep=='wvlt':
-        time_steps=256
+        time_steps=512
     else:
         time_steps=126
     
@@ -80,7 +80,10 @@ if __name__ == "__main__":
                 if torch.cuda.is_available():
                     mat=mat.cuda()
                 to,bot=aespeech.AE.forward(mat)
-
+                
+                if rep=='wvlt':
+                    to=aespeech.standard(to)
+                    
                 data_curr[ii,:]=np.mean(np.mean((mat[:,0,:,:].cpu().detach().numpy()-to[:,0,:,:].cpu().detach().numpy())**2,axis=1),axis=0)
                 data_curr[ii,:]=np.std(np.std((mat[:,0,:,:].cpu().detach().numpy()-to[:,0,:,:].cpu().detach().numpy())**2,axis=1),axis=0)
                 

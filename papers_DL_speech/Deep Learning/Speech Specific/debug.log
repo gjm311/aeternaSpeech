@@ -1,0 +1,34 @@
+[0903/173443.358:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.362:ERROR:process_reader_win.cc(127)] NtOpenThread: {Access Denied} A process has requested access to an object, but has not been granted those access rights. (0xc0000022)
+[0903/173443.363:ERROR:exception_snapshot_win.cc(100)] thread ID 14764 not found in process
+[0903/173443.567:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.567:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.567:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.567:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.567:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(155)] SuspendThread: Access is denied. (0x5)
+[0903/173443.568:ERROR:process_reader_win.cc(127)] NtOpenThread: {Access Denied} A process has requested access to an object, but has not been granted those access rights. (0xc0000022)
+[0903/173443.568:ERROR:exception_snapshot_win.cc(100)] thread ID 8480 not found in process
+[0903/173444.079:ERROR:minidumpwritedump_with_crashpad_info.cc(452)] Failed to call MiniDumpWriteDump: Access is denied. (0x80070005)
+[0903/173444.079:ERROR:minidumpwritedump_with_crashpad_info.cc(661)] Failed to write minidump file
+[0903/173444.079:ERROR:crash_report_exception_handler.cc(132)] TryMiniDumpWriteDumpWithCrashpadInfo failed
+[0903/173444.082:ERROR:process_memory_win.cc(73)] ReadMemory at 0x2b0ae4b7480 of 72 bytes failed: Only part of a ReadProcessMemory or WriteProcessMemory request was completed. (0x12B)
+[0903/173444.083:WARNING:pe_image_annotations_reader.cc(135)] could not read annotations list object in C:\Program Files (x86)\Microsoft\Edge\Application\85.0.564.41\msedge_elf.dll
+[0903/173444.083:ERROR:process_memory_win.cc(73)] ReadMemory at 0x2b0ae4ffdc0 of 72 bytes failed: Only part of a ReadProcessMemory or WriteProcessMemory request was completed. (0x12B)
+[0903/173444.083:WARNING:pe_image_annotations_reader.cc(135)] could not read annotations list object in C:\Program Files (x86)\Microsoft\Edge\Application\85.0.564.41\msedge.dll

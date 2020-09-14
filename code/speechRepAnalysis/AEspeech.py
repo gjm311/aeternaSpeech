@@ -166,13 +166,13 @@ class AEspeech:
         if fs!=16000:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
 
-        SNIP_LEN=50 #Frame size in mS
+        SNIP_LEN=500 #Frame size in mS
         NFR=int(signal.shape[0]*1000/(fs*SNIP_LEN)) #Number of frames (determined based off length of window)
         FRAME_SIZE=int(signal.shape[0]/NFR) #Frame size in samples
         OVRLP=0.5 #Overlap
         SHIFT=int(FRAME_SIZE*OVRLP) #Time shift
         NBF=64 #Number of band frequencies
-        TIME_STEPS=256
+        TIME_STEPS=512
         DIM=(TIME_STEPS,NBF)
 
         signal=signal-np.mean(signal)
@@ -271,7 +271,7 @@ class AEspeech:
         f=f[::-1]
         
         FS=16000
-        SNIP_LEN=50
+        SNIP_LEN=500
 
         for k in range(coefs1.shape[0]):
             if torch.is_tensor(coefs2):
@@ -370,21 +370,11 @@ class AEspeech:
                 else:
                     raise ValueError("Color bar cscale should be 'linear' or 'log', got:"+
                                      str(cscale))
-
+                
                 # plot the 2D spectrum using a pcolormesh to specify the correct Y axis
                 # location at each scale
                 qmesh = ax.pcolormesh(xmesh, ymesh, values, cmap=cmap)
-#                 plt.show()
-#                 plt.tight_layout()
-#                 plt.show()
-    #             # color bar stuff
-    #             if cbar:
-    #                 cbarkw   = CBAR_DEFAULTS[cbar] if cbarkw is None else cbarkw
-    #                 colorbar = plt.colorbar(qmesh, orientation=cbar, ax=ax, **cbarkw)
-    #                 if cbarlabel:
-    #                     colorbar.set_label(cbarlabel)
 
-#     return ax1,ax2
 
             
     def standard(self, tensor):

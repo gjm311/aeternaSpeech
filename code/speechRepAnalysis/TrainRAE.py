@@ -34,11 +34,9 @@ if __name__=="__main__":
     path_rep=PATH+sys.argv[2]
     if 'wvlt' in sys.argv[2]:
         rep_typ='wvlt'
-        LR=0.001
-        BATCH_SIZE=8
+        BATCH_SIZE=16
     elif 'spec' in sys.argv[2]:
         rep_typ='spec'
-        LR=0.001
         BATCH_SIZE=16
     else:
         print("Please correct directory path input...")
@@ -63,7 +61,8 @@ if __name__=="__main__":
     MAX_SCALER= float(SCALERS['Max '+rep_typ+' Scale'])  #MAX value of total energy.
     NTRAIN=6000
     NVAL=500
-
+    LR=.0001
+    
     train=SpecDataset(PATH_TRAIN)
     test=SpecDataset(PATH_TEST)
 
@@ -73,13 +72,15 @@ if __name__=="__main__":
    
     train_loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     test_loader = torch.utils.data.DataLoader(test, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
-
+    
+    
+    
     if rep_typ=='spec':
         model=RAEn(BOTTLE_SIZE)
     elif rep_typ=='wvlt':
         model=wvRAEn(BOTTLE_SIZE)
     criterion = torch.nn.MSELoss()    
-    
+
     optimizer = torch.optim.Adam(model.parameters(), lr = LR)
 
     if torch.cuda.is_available():
@@ -104,9 +105,9 @@ if __name__=="__main__":
 
             # clear the gradients of all optimized variables
             optimizer.zero_grad()
-            if rep=='spec':
-                data=standard(data, MIN_SCALER, MAX_SCALER)
-                
+#             if rep_typ=='spec':
+            data=standard(data, MIN_SCALER, MAX_SCALER)
+
             data=data.float()
 
             if torch.cuda.is_available():
@@ -116,7 +117,6 @@ if __name__=="__main__":
 
             if torch.cuda.is_available():
                 data_out=data_out.cuda()
-
 
             loss = criterion(data_out, data)
             loss.backward()
@@ -135,9 +135,9 @@ if __name__=="__main__":
         model.eval() # prep model for evaluation
         for data_val in test_loader:
             # forward pass: compute predicted outputs by passing inputs to the model
-            if rep=='spec':
-                data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
-                
+#             if rep_typ=='spec':
+            data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
+
             data_val=data_val.float()
             if torch.cuda.is_available():
                 data_val=data_val.cuda()

@@ -8,7 +8,7 @@ import sys
 from CAE import CAEn
 from wvCAE import wvCAEn
 import toolbox.traintestsplit as tts
-
+import pdb
 
 def standard(tensor, minval, maxval):
     temp=tensor-minval
@@ -53,23 +53,20 @@ if __name__=="__main__":
 
     PATH_TRAIN=path_rep+"/train/"
     PATH_TEST=path_rep+"/test/"
-    BATCH_SIZE=30
+    BATCH_SIZE=500
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
     LR=0.01
-    N_EPOCHS = 50
+    N_EPOCHS = 25
     SCALERS = pd.read_csv("scales.csv")
     MIN_SCALER= float(SCALERS['Min '+rep_typ+' Scale']) #MIN value of total energy.
     MAX_SCALER= float(SCALERS['Max '+rep_typ+' Scale'])  #MAX value of total energy.
     NTRAIN=6000
     NVAL=500
     FS=16000
-    NFR=32
-    NBF=8
 
     train=SpecDataset(PATH_TRAIN)
     test=SpecDataset(PATH_TEST)
-
     save_path = PATH+"/pts/"+rep_typ+'/'
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
@@ -108,6 +105,7 @@ if __name__=="__main__":
 
             # clear the gradients of all optimized variables
             optimizer.zero_grad()
+#             if rep_typ=='spec':
             data=standard(data, MIN_SCALER, MAX_SCALER)
 
             data=data.float()
@@ -138,6 +136,7 @@ if __name__=="__main__":
         model.eval() # prep model for evaluation
         for data_val in test_loader:
             # forward pass: compute predicted outputs by passing inputs to the model
+#             if rep_typ=='spec':
             data_val=standard(data_val, MIN_SCALER, MAX_SCALER)
             
             data_val=data_val.float()

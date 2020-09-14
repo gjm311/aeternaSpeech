@@ -27,7 +27,7 @@ class RAEenc(nn.Module):
         return x
 
 class RAEdec(nn.Module):
-    def __init__(self, dim=16, seq_len=256):
+    def __init__(self, dim=16, seq_len=512):
         super().__init__()
         self.lstm = nn.LSTM(dim,64, batch_first=True, num_layers=2)
         self.seq_len=seq_len

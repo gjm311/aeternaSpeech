@@ -19,7 +19,7 @@ class CAEenc(nn.Module):
         self.conv4=nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn4 = nn.BatchNorm2d(64)
 
-        self.linear = nn.Linear(64*4*16, dim)
+        self.linear = nn.Linear(64*4*32, dim)
 
     def forward(self, x):
 
@@ -42,12 +42,12 @@ class CAEdec(nn.Module):
         self.conv3=nn.ConvTranspose2d(16, 8, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn3 = nn.BatchNorm2d(8)
         self.conv4=nn.ConvTranspose2d(8, nc, kernel_size=3, stride=1, padding=1, bias=False)
-        self.linear = nn.Linear(dim,64*4*16)
+        self.linear = nn.Linear(dim,64*4*32)
 
     def forward(self, x):
             
         x = self.linear(x)
-        x = x.view(x.size(0), 64,4,16)
+        x = x.view(x.size(0), 64,4,32)
         x = F.interpolate(x, scale_factor=2)
         x =F.leaky_relu((self.bn1(self.conv1(x))))
         x = F.interpolate(x, scale_factor=2)
@@ -57,7 +57,7 @@ class CAEdec(nn.Module):
         x = F.interpolate(x, scale_factor=2)
         x =F.sigmoid((self.conv4(x)))
 
-        return x[:,:,:,:256]
+        return x[:,:,:,:512]
 
 
 class wvCAEn(nn.Module):

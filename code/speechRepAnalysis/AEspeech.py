@@ -166,7 +166,7 @@ class AEspeech:
         if fs!=16000:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
 
-        SNIP_LEN=500 #Frame size in mS
+        SNIP_LEN=50 #Frame size in mS
         NFR=int(signal.shape[0]*1000/(fs*SNIP_LEN)) #Number of frames (determined based off length of window)
         FRAME_SIZE=int(signal.shape[0]/NFR) #Frame size in samples
         OVRLP=0.5 #Overlap

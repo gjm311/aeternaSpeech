@@ -94,6 +94,9 @@ if __name__=="__main__":
         num_feats=128+256
     comp_range=np.arange(1,5)
     
+    
+    pc_var_info=pd.DataFrame({utter:{'pc_var':[]} for utter in UTTERS})
+    
     for uIdx,utter in enumerate(UTTERS):
         pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
         hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
@@ -106,45 +109,44 @@ if __name__=="__main__":
         num_hc=len(hcs)
         pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
         hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
-        scores=[]
-#         for n_comps in comp_range:
-        n_comps=2
-        pca = PCA(n_components=n_comps)
-        curr_best=0
         pdTrainees=np.unique(pdFeats['wav_file'])
         hcTrainees=np.unique(hcFeats['wav_file'])
         pdTrainIds=np.arange(50)
         hcTrainIds=np.arange(50,100)
-        pds=np.zeros((len(pdTrainees),n_comps,4))
-        hcs=np.zeros((len(hcTrainees),n_comps,4))
+        pds=np.zeros((len(pdTrainees),num_feats,4))
+        hcs=np.zeros((len(hcTrainees),num_feats,4))
         #getting bottle neck features and reconstruction error for training
         for ii,tr in enumerate(pdTrainees):
             tritr=pdTrainIds[ii]
             pdTrBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[tritr])]
             pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
             pdTr=np.concatenate((pdTrBns,pdTrErrs),axis=1)
-            st_pdFeats=StandardScaler().fit_transform(pd.DataFrame(pdTr))
-            pdPCs=pca.fit_transform(st_pdFeats)
-            pds[ii,:,:]=np.array([np.mean(pdPCs,axis=0),np.std(pdPCs,axis=0),skew(pdPCs,axis=0),kurtosis(pdPCs,axis=0)]).T
+            pds[ii,:,:]=np.array([np.mean(pdTr,axis=0),np.std(pdTr,axis=0),skew(pdTr,axis=0),kurtosis(pdTr,axis=0)]).T
         for ii,tr in enumerate(hcTrainees):
             tritr=hcTrainIds[ii]
             hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
             hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
             hcTr=np.concatenate((hcTrBns,hcTrErrs),axis=1)
-            st_hcFeats=StandardScaler().fit_transform(pd.DataFrame(hcTr))
-            hcPCs=pca.fit_transform(st_hcFeats)
-            hcs[ii,:,:]=np.array([np.mean(hcPCs,axis=0),np.std(hcPCs,axis=0),skew(hcPCs,axis=0),kurtosis(hcPCs,axis=0)]).T
+            hcs[ii,:,:]=np.array([np.mean(hcTr,axis=0),np.std(hcTr,axis=0),skew(hcTr,axis=0),kurtosis(hcTr,axis=0)]).T
 
-        pdXTrain=np.reshape(pds,(pds.shape[0]*n_comps,4))
-        hcXTrain=np.reshape(hcs,(hcs.shape[0]*n_comps,4))      
+        pdXTrain=np.reshape(pds,(pds.shape[0]*4,num_feats))
+        hcXTrain=np.reshape(hcs,(hcs.shape[0]*4,num_feats))  
+        xTrain=np.concatenate((pdXTrain,hcXTrain),axis=0)
+        st_xTrain=StandardScaler().fit_transform(pd.DataFrame(xTrain))
+        
+        pca = PCA(n_components=min(200,num_feats))
+        pca.fit_transform(st_xTrain)
+        variance = pca.explained_variance_ratio_ #calculate variance ratios
+        var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
+        ncs=np.count_nonzero(var<=90)
+        
+        pca = PCA(n_components=ncs)
+        pca_xTrain=pca.fit_transform(st_xTrain)
+
         pdYTrain=np.ones((pdXTrain.shape[0])).T
         hcYTrain=np.zeros((hcXTrain.shape[0])).T
-        
-        xTrain=np.concatenate((pdXTrain,hcXTrain),axis=0)
         yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
-        where_are_NaNs = np.isnan(xTrain)
-        xTrain[where_are_NaNs] = 0
-        
+
 #         C_range = np.logspace(1, 5, 20)
 #         gamma_range = np.logspace(-6,-1, 20)
 #         param_grid = dict(gamma=gamma_range, C=C_range)
@@ -154,16 +156,16 @@ if __name__=="__main__":
 
         cv = StratifiedShuffleSplit(n_splits=4, test_size=0.2, random_state=42)
         grid = GridSearchCV(SVC(), param_grid=param_grid, cv=cv)
-        grid.fit(xTrain, yTrain)
+        grid.fit(pca_xTrain, yTrain)
 
         scores.append(grid.best_score_)
         if grid.best_score_ > curr_best:
             filename = save_path+model+'_'+utter+'_'+rep+'Grid.pkl'
             with open(filename, 'wb') as file:
                 joblib.dump(grid, filename)
-                    
-#         scores_df=pd.DataFrame({n_c:score for n_c,score in zip(comp_range,scores)},index=np.arange(1))
-#         scores_df.to_pickle(save_path+model+'_'+utter+'_'+rep+'GridCompData.pkl')
-
+        pc_var_info.iloc[utter]['pc_var']=var
+                
+    
+    pc_var_info.to_csv(save_path+model+'_'+utter+'_'+rep+'_pc.csv')
 
 

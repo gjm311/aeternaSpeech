@@ -53,7 +53,7 @@ if __name__ == "__main__":
     HOP=64
     NMELS=128
     DIM=()
-    SNIP_LEN=500#in mS
+    SNIP_LEN=50#in mS
     
     minSpec_en = np.inf
     maxSpec_en = -np.inf
@@ -134,9 +134,7 @@ if __name__ == "__main__":
             num_samples=int(FRAME_SIZE*FS)
             endi=num_samples
             
-#             #Create wavelet basis and get necessary dimensions to scale to 128 time steps
-#             [freqs,psi,phi]=create_wavelets(num_samples,nbf=NBF,dil=DIL)
-            
+           
             
 #             nf=int(len(data)/(TIME_SHIFT*FS))-1
 #             if nf>0:

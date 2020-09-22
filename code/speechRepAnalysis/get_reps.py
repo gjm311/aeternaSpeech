@@ -40,10 +40,10 @@ if __name__ == "__main__":
         os.makedirs(PATH_WVLT)
         
     if not os.path.exists(PATH_AUDIO+'/train/'):
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.1)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.5)
         split.fileTrTstSplit()
     elif len(os.listdir(PATH_AUDIO+'/train/'))<=2:
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.1)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.5)
         split.fileTrTstSplit()
     
     FS=16000

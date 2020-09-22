@@ -5,7 +5,7 @@ import pandas as pd
 import pickle
 import random
 import pdb
-
+# import xgboost as xgb
 from AEspeech import AEspeech
 from scipy.stats import kurtosis, skew
 from sklearn import svm, datasets
@@ -15,6 +15,11 @@ from sklearn.model_selection import GridSearchCV
 import joblib
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.metrics import make_scorer
+from sklearn.metrics import roc_curve, auc
+from sklearn.pipeline import Pipeline
+from sklearn.decomposition import TruncatedSVD
+
 
 MODELS=["CAE","RAE","ALL"]
 REPS=['spec','wvlt']    
@@ -54,7 +59,13 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     
     return feat_vecs
        
-
+    
+# define scoring function 
+# def custom_auc(ground_truth, predictions):
+#     fpr, tpr, _ = roc_curve(ground_truth, predictions, pos_label=1)    
+#     return auc(fpr, tpr)
+    
+    
 if __name__=="__main__":
 
     if len(sys.argv)!=4:
@@ -93,11 +104,12 @@ if __name__=="__main__":
     else:
         num_feats=128+256
     comp_range=np.arange(1,5)
-    
+#     num_feats=256
     
     pc_var_info=pd.DataFrame({utter:{'pc_var':[]} for utter in UTTERS})
-    
+    scores=[]
     for uIdx,utter in enumerate(UTTERS):
+        curr_best=0
         pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
         hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
         pds=[name for name in os.listdir(pd_path) if '.wav' in name]
@@ -129,43 +141,54 @@ if __name__=="__main__":
             hcTr=np.concatenate((hcTrBns,hcTrErrs),axis=1)
             hcs[ii,:,:]=np.array([np.mean(hcTr,axis=0),np.std(hcTr,axis=0),skew(hcTr,axis=0),kurtosis(hcTr,axis=0)]).T
 
-        pdXTrain=np.reshape(pds,(pds.shape[0]*4,num_feats))
-        hcXTrain=np.reshape(hcs,(hcs.shape[0]*4,num_feats))  
+        pdXTrain=np.reshape(pds,(pds.shape[0],num_feats*4))
+        hcXTrain=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
         xTrain=np.concatenate((pdXTrain,hcXTrain),axis=0)
         st_xTrain=StandardScaler().fit_transform(pd.DataFrame(xTrain))
         
-        pca = PCA(n_components=min(200,num_feats))
+        
+        pca = PCA(n_components=min(xTrain.shape[0],xTrain.shape[1]))
         pca.fit_transform(st_xTrain)
         variance = pca.explained_variance_ratio_ #calculate variance ratios
         var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
-        ncs=np.count_nonzero(var<=90)
-        
+        ncs=np.count_nonzero(var>90)
         pca = PCA(n_components=ncs)
         pca_xTrain=pca.fit_transform(st_xTrain)
+        
+        pc_var_info[utter][0]=var
+        pc_var_info.to_pickle(save_path+model+'_'+utter+'_'+rep+'_pc.pkl')
 
         pdYTrain=np.ones((pdXTrain.shape[0])).T
         hcYTrain=np.zeros((hcXTrain.shape[0])).T
         yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
-
-#         C_range = np.logspace(1, 5, 20)
-#         gamma_range = np.logspace(-6,-1, 20)
-#         param_grid = dict(gamma=gamma_range, C=C_range)
+        # to be standard sklearn's scorer        
+#         my_auc = make_scorer(custom_auc, greater_is_better=True, needs_proba=False)
         param_grid = [
-          {'C':np.logspace(3, 8, 20), 'gamma':np.logspace(-3,5, 20), 'degree':[2],'kernel': ['poly']},
+          {'C':np.logspace(-10,5,15), 'gamma':np.logspace(-10,3,20), 'degree':[1,2,3],'kernel': ['linear','rbf','poly']},
         ]
-
-        cv = StratifiedShuffleSplit(n_splits=4, test_size=0.2, random_state=42)
+        cv = StratifiedShuffleSplit(n_splits=1, test_size=0.15, random_state=42)
+#         grid = GridSearchCV(SVC(),scoring = my_auc, param_grid=param_grid, cv=cv)
         grid = GridSearchCV(SVC(), param_grid=param_grid, cv=cv)
         grid.fit(pca_xTrain, yTrain)
+        
+    #         pipeline = Pipeline(
+#                 [("transformer", TruncatedSVD(n_components=70)),
+#                 ("classifier", xgb.XGBClassifier(scale_pos_weight=1.0, learning_rate=0.1, 
+#                                 max_depth=5, n_estimators=50, min_child_weight=5))])
+#         parameters_grid = {'transformer__n_components': [60, 40, 20] }
+#         grid_cv = GridSearchCV(pipeline, parameters_grid, scoring = my_auc, n_jobs=-1,
+#                                                         cv = StratifiedShuffleSplit(n_splits=5,test_size=0.3,random_state = 0))
+#         grid_cv.fit(pca_xTrain, yTrain)
+
+        
 
         scores.append(grid.best_score_)
         if grid.best_score_ > curr_best:
             filename = save_path+model+'_'+utter+'_'+rep+'Grid.pkl'
             with open(filename, 'wb') as file:
                 joblib.dump(grid, filename)
-        pc_var_info.iloc[utter]['pc_var']=var
                 
     
-    pc_var_info.to_csv(save_path+model+'_'+utter+'_'+rep+'_pc.csv')
+    
 
 

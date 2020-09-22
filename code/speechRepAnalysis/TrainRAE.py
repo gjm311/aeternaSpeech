@@ -2,7 +2,7 @@ from SpecDatset import SpecDataset
 import time
 import torch
 import numpy as np
-import pandas as pd
+#import pandas as pd
 import os
 import sys
 from RAE import RAEn
@@ -18,14 +18,35 @@ def destandard(tensor, minval, maxval):
     temp=tensor*(maxval-minval)
     return temp+minval
 
+def load_checkpoint(checkpoint_path, model, optimizer):
+    assert os.path.isfile(checkpoint_path)
+    checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
+    iteration = checkpoint_dict['iteration']
+    optimizer.load_state_dict(checkpoint_dict['optimizer'])
+    model_for_loading = checkpoint_dict['model']
+    model.load_state_dict(model_for_loading.state_dict())
+    print("Loaded checkpoint '{}' (iteration {})" .format(
+          checkpoint_path, iteration))
+    return model, optimizer, iteration
+    
+
 if __name__=="__main__":
     
     PATH=os.path.dirname(os.path.abspath(__file__))
-    if len(sys.argv)!=3:
-        print("python TrainRAE.py <bottleneck_sizes> <rep path>")
+    if len(sys.argv)!=4:
+        print("python TrainRAE.py <bottleneck_sizes> <rep path> <chkpt_path>")
         sys.exit()
-    #repPath: .../reps/wvlt or spec/train/ 
+    #repPath: "./tedx_spanish_corpus/reps/'wvlt or spec'/train/" 
+    #chkpt_path: "./pts/checkpoints/" 
     
+    if sys.argv[3]:
+        if sys.argv[3][0] !='/':
+            chkpt_path = PATH+'/'+sys.argv[3]
+        if sys.argv[3][-1] !='/':
+            chkpt_path = PATH+sys.argv[3]+'/'
+    else:
+        chkpt_path=''
+        
     if sys.argv[2][0] !='/':
         sys.argv[2] = '/'+sys.argv[2]
     if sys.argv[2][-1] !='/':
@@ -34,10 +55,10 @@ if __name__=="__main__":
     path_rep=PATH+sys.argv[2]
     if 'wvlt' in sys.argv[2]:
         rep_typ='wvlt'
-        BATCH_SIZE=16
+        BATCH_SIZE=100
     elif 'spec' in sys.argv[2]:
         rep_typ='spec'
-        BATCH_SIZE=16
+        BATCH_SIZE=100
     else:
         print("Please correct directory path input...")
         sys.exit()
@@ -55,10 +76,10 @@ if __name__=="__main__":
     
     NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
-    N_EPOCHS = 50
-    SCALERS = pd.read_csv("scales.csv")
-    MIN_SCALER= float(SCALERS['Min '+rep_typ+' Scale']) #MIN value of total energy.
-    MAX_SCALER= float(SCALERS['Max '+rep_typ+' Scale'])  #MAX value of total energy.
+    N_EPOCHS = 25
+    #SCALERS = pd.read_csv("scales.csv")
+    MIN_SCALER=-41.0749397
+    MAX_SCALER=6.720702
     NTRAIN=6000
     NVAL=500
     LR=.0001
@@ -73,16 +94,33 @@ if __name__=="__main__":
     train_loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     test_loader = torch.utils.data.DataLoader(test, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     
-    
-    
     if rep_typ=='spec':
         model=RAEn(BOTTLE_SIZE)
     elif rep_typ=='wvlt':
         model=wvRAEn(BOTTLE_SIZE)
     criterion = torch.nn.MSELoss()    
-
+   
+    if rep_typ=='spec':
+        model=CAEn(BOTTLE_SIZE)
+    elif rep_typ=='wvlt':
+        model=wvCAEn(BOTTLE_SIZE)
     optimizer = torch.optim.Adam(model.parameters(), lr = LR)
-
+    epochs=np.arange(N_EPOCHS)
+         
+    if os.path.isfile(save_path+str(BOTTLE_SIZE)+'_RAE.pt'):
+        model, optimizer, epoch = load_checkpoint(save_path+str(BOTTLE_SIZE)+'_RAE.pt', model,
+                                                      optimizer)
+        epoch += 1  # next iteration is iteration + 1
+        if epoch>=N_EPOCHS:
+            if rep_typ=='spec':
+                model=CAEn(BOTTLE_SIZE)
+            elif rep_typ=='wvlt':
+                model=wvCAEn(BOTTLE_SIZE)
+            epochs=np.arange(N_EPOCHS)
+        else:
+            epochs=np.arange(epoch,N_EPOCHS)
+    
+    
     if torch.cuda.is_available():
         print(torch.cuda.get_device_name(0))
         model.cuda()
@@ -93,7 +131,7 @@ if __name__=="__main__":
     valid_loss_min = np.Inf # set initial "min" to infinity
     avg_train_losses=[]
     avg_valid_losses=[]
-
+    
     for epoch in range(N_EPOCHS):
         start=time.time()
         # monitor training loss
@@ -175,11 +213,20 @@ if __name__=="__main__":
             print('Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(
             valid_loss_min,
             valid_loss))
-            torch.save(model.state_dict(), save_path+'/'+str(BOTTLE_SIZE)+'_RAE.pt')
+#             torch.save(model.state_dict(), save_path+'/'+str(BOTTLE_SIZE)+'_RAE.pt')
+            model.load_state_dict(model.state_dict())
+            torch.save({'model': model.state_dict(),
+                    'epoch': epoch,
+                    'optimizer': optimizer.state_dict(),
+                    'learning_rate': lr}, save_path+'/'+str(BOTTLE_SIZE)+'_RAE.pt')
             valid_loss_min = valid_loss
-        f=open(save_path+'/loss_'+str(BOTTLE_SIZE)+'_RAE.csv', "a")
+        if epoch==0:
+            f=open(save_path+'/loss_'+str(BOTTLE_SIZE)+'_RAE.csv', "a")
+        else:
+            f=open(save_path+'/loss_'+str(BOTTLE_SIZE)+'_RAE.csv', "w")
         f.write(str(train_loss)+", "+str(valid_loss)+"\n")
         f.close()
+        
 
 
 

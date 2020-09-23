@@ -109,7 +109,7 @@ if __name__=="__main__":
   
     BATCH_SIZE=1000
     NUM_W=0
-    N_EPOCHS=500
+    N_EPOCHS=50000
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
     LR=10e-5
     if rep=='spec':
@@ -357,8 +357,8 @@ if __name__=="__main__":
                             #Find difference in probability of PD v. HC for all segments. 
                             y_pred_tag.extend((y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy())
 
-#                             loss = criterion(y_test_pred, torch.from_numpy(yTest).cuda().float())
-                            loss = criterion(y_test_pred, torch.from_numpy(yTest).float())
+                            loss = criterion(y_test_pred, torch.from_numpy(yTest).cuda().float())
+#                             loss = criterion(y_test_pred, torch.from_numpy(yTest).float())
                             val_loss+=loss.item()*X_test.size(0)
 
 
@@ -422,8 +422,8 @@ if __name__=="__main__":
                             #Find difference in probability of PD v. HC for all segments. 
                             y_pred_tag.extend((y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy())
 
-#                             loss = criterion(y_test_pred, torch.from_numpy(yTest).cuda().float())
-                            loss = criterion(y_test_pred, torch.from_numpy(yTest).float())
+                            loss = criterion(y_test_pred, torch.from_numpy(yTest).cuda().float())
+#                             loss = criterion(y_test_pred, torch.from_numpy(yTest).float())
                             test_loss_curr+=loss.item()*X_test.size(0)
 
                     #accuracy determined on majority rule (wlog, if more frames yield probability differences greater than 0,

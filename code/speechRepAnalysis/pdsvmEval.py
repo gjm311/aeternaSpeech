@@ -4,13 +4,23 @@ import numpy as np
 import pandas as pd
 import pickle
 import random
-from sklearn import svm
-from sklearn.metrics import hinge_loss
-from AEspeech import AEspeech
 import pdb
+# import xgboost as xgb
+from AEspeech import AEspeech
 from scipy.stats import kurtosis, skew
+from sklearn import svm, datasets
+from sklearn.svm import SVC
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import GridSearchCV
+import joblib
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.metrics import make_scorer
+from sklearn.metrics import roc_curve, auc
+from sklearn.pipeline import Pipeline
+from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics import average_precision_score
+from sklearn.metrics import classification_report
 
 MODELS=["CAE","RAE","ALL"]
 REPS=['spec','wvlt']    
@@ -50,7 +60,13 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     
     return feat_vecs
        
-
+    
+# define scoring function 
+# def custom_auc(ground_truth, predictions):
+#     fpr, tpr, _ = roc_curve(ground_truth, predictions, pos_label=1)    
+#     return auc(fpr, tpr)
+    
+    
 if __name__=="__main__":
 
     if len(sys.argv)!=4:
@@ -75,179 +91,137 @@ if __name__=="__main__":
     if sys.argv[3][-1] !='/':
         sys.argv[3] = sys.argv[3]+'/'
         
-    
-    mfda_path=PATH+"/pdSpanish/"
-        
     save_path=PATH+"/pdSpanish/classResults/svm/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
         
-        
+    mfda_path=PATH+"/pdSpanish/"
     mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
     pd_mfdas=mfdas[0:50]
     hc_mfdas=mfdas[50:]
+
     if rep=='wvlt':
         num_feats=64+256
     else:
         num_feats=128+256
+    comp_range=np.arange(1,5)
+#     num_feats=256
     
-    results=pd.DataFrame({utter:{{'train_acc':0,'test_acc':0,'bin_class':{'pd':{},'hc':{}},'class_report':{'pd':{},'hc':{}}} for utter in UTTERS})
+    scores=[]
+    results=pd.DataFrame({utter:{'train_acc':0,'test_acc':0,'bin_class':{},'class_report':{}} for utter in UTTERS})
+    
+    for uIdx,utter in enumerate(UTTERS):
+        curr_best=0
+        pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
+        hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
+        pdNames=[name for name in os.listdir(pd_path) if '.wav' in name]
+        hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
+        pdNames.sort()
+        hcNames.sort()
+        spks=pdNames+hcNames
+        num_spks=len(spks)
+        num_pd=len(pdNames)
+        num_hc=len(hcNames)
+        pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
+        hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
+        pdAll=np.unique(pdFeats['wav_file'])
+        hcAll=np.unique(hcFeats['wav_file'])
+        pdIds=np.arange(50)
+        hcIds=np.arange(50,100)
+        pds=np.zeros((len(pdAll),num_feats,4))
+        hcs=np.zeros((len(hcAll),num_feats,4))
+        #getting bottle neck features and reconstruction error for training
+        for ii,tr in enumerate(pdAll):
+            tritr=pdIds[ii]
+            pdTrBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[tritr])]
+            pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
+            pdTr=np.concatenate((pdTrBns,pdTrErrs),axis=1)
+            pds[ii,:,:]=np.array([np.mean(pdTr,axis=0),np.std(pdTr,axis=0),skew(pdTr,axis=0),kurtosis(pdTr,axis=0)]).T
+        for ii,tr in enumerate(hcAll):
+            tritr=hcIds[ii]
+            hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
+            hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
+            hcTr=np.concatenate((hcTrBns,hcTrErrs),axis=1)
+            hcs[ii,:,:]=np.array([np.mean(hcTr,axis=0),np.std(hcTr,axis=0),skew(hcTr,axis=0),kurtosis(hcTr,axis=0)]).T
 
-    #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train an SVM
-    #and classify if PD or HC.
-    for itr in range(10):
-
-        for u_idx,utter in enumerate(UTTERS):
-            if itr==0:
-                pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
-                hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
-                pds=[name for name in os.listdir(pd_path) if '.wav' in name]
-                hcs=[name for name in os.listdir(hc_path) if '.wav' in name]
-                pd_files=pds
-                hc_files=hcs
-                pds.sort()
-                hcs.sort()
-                spks=pds+hcs
-                num_pd=len(pds)
-                num_hc=len(hcs)
-                total_spks=num_pd+num_hc
-                rand_range=np.arange(total_spks)
-                random.shuffle(rand_range)
-            else:
-                pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
-                hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/" 
-
-            pdFeats=getFeats(mod,UNITS,rep,pd_path,utter,'pd')
-            hcFeats=getFeats(mod,UNITS,rep,hc_path,utter,'hc')
+        pdXAll=np.reshape(pds,(pds.shape[0],num_feats*4))
+        hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
+        xAll=np.concatenate((pdXAll,hcXAll),axis=0)
+        st_xAll=StandardScaler().fit_transform(pd.DataFrame(xAll))
+        
+        
+        pca = PCA(n_components=min(xAll.shape[0],xAll.shape[1]))
+        pca.fit_transform(st_xAll)
+        variance = pca.explained_variance_ratio_ #calculate variance ratios
+        var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
+        ncs=np.count_nonzero(var>90)
+        pca = PCA(n_components=ncs)
+        pca_xAll=pca.fit_transform(st_xAll)
+        
+        #split data into training and test with multiple iterations (90 training, 10 test per iter and evenly split PD:HC)
+        pd_files=pdNames
+        hc_files=hcNames
+        num_pdHc_tests=4 #must be even (same # of test pds and hcs per iter)
+        for itr in range(int(num_spks/num_pdHc_tests)):
+            rand_range=np.arange(num_spks)
+            random.shuffle(rand_range)
             
-            #Get test speaker features, load test
-            if u_idx==0:
-                pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),5)]
-                hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),5)]
-                pd_files=[pd for pd in pd_files if pd not in pdCurrs]
-                hc_files=[hc for hc in hc_files if hc not in hcCurrs]
+            pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),int(num_pdHc_tests/2))]
+            hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),int(num_pdHc_tests/2))]
+            pd_files=[pd for pd in pd_files if pd not in pdCurrs]
+            hc_files=[hc for hc in hc_files if hc not in hcCurrs]
 
-                pdIds=[spks.index(pdCurr) for pdCurr in pdCurrs]
-                hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
-
-            testDict={spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])}
-            pdTests=np.zeros((len(pdCurrs),num_feats,4))
-            hcTests=np.zeros((len(hcCurrs),num_feats,4))
-
+            pdIds=[spks.index(pdCurr) for pdCurr in pdCurrs]
+            hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
+        
+#             testDict={spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])}
+            pdTest=np.zeros((num_pdHc_tests,ncs))
+            hcTest=np.zeros((num_pdHc_tests,ncs))
             for ii,pdItr in enumerate(pdIds):
-                pdBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[pdItr])]
-                pdErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[pdItr])]
-                pdTest=np.concatenate((pdBns,pdErrs),axis=1)
-                pdTests[ii,:,:]=np.array([np.mean(pdTest,axis=0),np.std(pdTest,axis=0),skew(pdTest,axis=0),kurtosis(pdTest,axis=0)]).T
-                testDict['pd'][pdItr]=pdTests[ii,:,:]
+                pdTest[ii,:]=pca_xAll[pdItr,:]
             for ii,hcItr in enumerate(hcIds):
-                hcBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[hcItr])]
-                hcErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[hcItr])]
-                hcTest=np.concatenate((hcBns,hcErrs),axis=1)
-                hcTests[ii,:,:]=np.array([np.mean(hcTest,axis=0),np.std(hcTest,axis=0),skew(hcTest,axis=0),kurtosis(hcTest,axis=0)]).T
-                testDict['hc'][hcItr]=hcTests[ii,:,:]
-                        
-            pdTests=np.reshape(pdTests,(len(pdCurrs),num_feats*4))
-            hcTests=np.reshape(hcTests,(len(hcCurrs),num_feats*4))
-            pdYTest=np.ones((pdTests.shape[0])).T
-            hcYTest=np.zeros((hcTests.shape[0])).T
-            yTest=np.concatenate((pdYTest,hcYTest),axis=0)
-
-            #Aggregate training features for each speaker.  
-            pdTrainees=[spk for idx,spk in enumerate(pds) if spk not in pdCurrs]
-            hcTrainees=[spk for idx,spk in enumerate(hcs) if spk not in hcCurrs]
+                hcTest[ii,:]=pca_xAll[hcItr,:]
+                
+            pdTrainees=[spk for idx,spk in enumerate(pdNames) if spk not in pdCurrs]
+            hcTrainees=[spk for idx,spk in enumerate(hcNames) if spk not in hcCurrs]
             pdTrainIds=[spks.index(tr) for tr in pdTrainees]
             hcTrainIds=[spks.index(tr) for tr in hcTrainees]
             
-            pdTrs=np.zeros((len(pdTrainees),num_feats,4))
-            hcTrs=np.zeros((len(hcTrainees),num_feats,4))
+            pdTrain=np.zeros((num_pd-int(num_pdHc_tests/2),ncs))
+            hcTrain=np.zeros((num_hc-int(num_pdHc_tests/2),ncs))
+            for ii,pdItr in enumerate(pdTrainIds):
+                pdTrain[ii,:]=pca_xAll[pdItr,:]
+            for ii,hcItr in enumerate(hcTrainIds):
+                pdTrain[ii,:]=pca_xAll[hcItr,:]
             
-            #getting bottle neck features and reconstruction error for training
-            for ii,tr in enumerate(pdTrainees):
-                tritr=pdTrainIds[ii]
-                pdTrBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[tritr])]
-                pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
-                pdTr=np.concatenate((pdTrBns,pdTrErrs),axis=1)
-                pdTrs[ii,:,:]=np.array([np.mean(pdTr,axis=0),np.std(pdTr,axis=0),skew(pdTr,axis=0),kurtosis(pdTr,axis=0)]).T
-            for ii,tr in enumerate(hcTrainees):
-                tritr=hcTrainIds[ii]
-                hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
-                hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
-                hcTr=np.concatenate((hcTrBns,hcTrErrs),axis=1)
-                hcTrs[ii,:,:]=np.array([np.mean(hcTr,axis=0),np.std(hcTr,axis=0),skew(hcTr,axis=0),kurtosis(hcTr,axis=0)]).T
-                
-            pdTrs=np.reshape(pdTrs,(pdTrs.shape[0],num_feats*4))
-            hcTrs=np.reshape(hcTrs,(hcTrs.shape[0],num_feats*4))
-            xTrain=np.concatenate((pdTrs,hcTrs),axis=0)
-            xTest=np.concatenate((pdTests,hcTests),axis=0)
-            
-            st_xTrain=StandardScaler().fit_transform(pd.DataFrame(xTrain))
-            st_xTest=StandardScaler().fit_transform(pd.DataFrame(xTest))
-       
-            pdb.set_trace()
-            pca = PCA(n_components=min(xTest.shape[0],xTest.shape[1]))
-            pca.fit_transform(st_xTrain)
-            variance = pca.explained_variance_ratio_ #calculate variance ratios
-            var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
-            ncs=np.count_nonzero(var>90)
-            pca = PCA(n_components=ncs)
-            xTrain=pca.fit_transform(st_xTrain)
-            xTest=pca.fit_transform(st_xTest)
-            
-            pdYTrain=np.ones((pdTrs.shape[0])).T
-            hcYTrain=np.zeros((hcTrs.shape[0])).T
+            xTrain=np.concatenate((pdTrain,hcTrain),axis=0)
+            pdYTrain=np.ones((pdTrain.shape[0])).T
+            hcYTrain=np.zeros((pdTrain.shape[0])).T
             yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
             
-            pdYTest=np.ones((pdTests.shape[0])).T
-            hcYTest=np.zeros((hcTests.shape[0])).T
+            xTest=np.concatenate((pdTest,hcTest),axis=0)
+            pdYTest=np.ones((pdTest.shape[0])).T
+            hcYTest=np.zeros((pdTest.shape[0])).T
             yTest=np.concatenate((pdYTest,hcYTest),axis=0)
             
             grid=joblib.load(PATH+"/pdSpanish/classResults/svm/params/"+model+'_'+utter+'_'+rep+'Grid.pkl')
-            support=grid
-#             support = svm.SVC(gamma='scale',kernel='poly',degree=3, probability = True)
-            support.fit(xTrain,yTrain)
-#             pdTr_pred = support.predict(pdTrs)
-#             hcTr_pred = support.predict(hcTrs)
-#             pdTst_pred = support.predict(pdTests)
-#             hcTst_pred = support.predict(hcTests)
+#             grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
+#                                 kernel=grid.best_params_['kernel'], probability=True)
+#             grid.fit(xTrain,yTrain)
             
-            #get train,test acc,precision-recall,and class. report
-            train_acc=support.score(xTrain)
-            test_acc=support.score(xTest)
-            bin_class=support.predict_proba(xTest)
-            class_report=support.classification_report(xTest, yTest)
-            pdb.set_trace()
-            results[utter]['train_acc']+=train_acc*.1
-            results[utter]['test_acc']+=train_acc*.1        
+            train_acc=grid.score(xTrain,yTrain)
+            test_acc=grid.score(xTest,yTest)
+            bin_class=grid.predict_proba(xTest)
+#             avg_precision=average_precision_score(yTest, grid.decision_function(xTest))
+            class_report=classification_report(yTest,grid.predict(xTest))
+            results[utter]['train_acc']+=train_acc*(num_spks-num_pdHc_tests)*.01
+            results[utter]['test_acc']+=test_acc*num_pdHc_tests*.01
             results[utter]['class_report'][itr]=class_report  
             for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
                 results[utter]['bin_class'][pdId]=bin_class[cpi]     
-                results[utter]['bin_class'][hcId]=bin_class[cpi+5] 
-            
-                       
-#             for spkItr,spk in enumerate(['pd','hc']):
-#                 dic=testDict[spk]
-#                 for tstId in dic.keys(): 
-#                     xTest=dic[tstId]
-#                     pred=support.predict(xTest)
-#                     yTst=np.ones((xTest.shape[0]))*np.mod(spkItr+1,2)
-#                     results[utter]['test_acc']+=sum(np.mod((np.round(pred)-yTst)+1,2))/xTest.shape[0]*(1/(num_pd+num_hc))
-# #                         results[utter]['tstSpk_data'][tstId]=sum(np.round(pred)/xTest.shape[0])
-#                     results[utter]['tstSpk_data'][tstId]=min(np.mean(pred),1)
-
-#             pdTr_hit=sum(np.mod((pdTr_pred-pdYTrain)+1,2))
-#             hcTr_hit=sum(np.mod((hcTr_pred-hcYTrain)+1,2))
-#             pdTst_hit=sum(np.mod((pdTst_pred-pdYTest)+1,2))
-#             hcTst_hit=sum(np.mod((hcTst_pred-hcYTest)+1,2))
-#             results[utter]['train_acc']+=(pdTr_hit+hcTr_hit)/(pdYTrain.shape[0]+hcYTrain.shape[0])
-#             results[utter]['train_loss']+=hinge_loss(yTrain,np.concatenate((pdTr_pred,hcTr_pred),axis=0),)
-#             results[utter]['test_loss']+=hinge_loss(yTest,np.concatenate((pdTst_pred,hcTst_pred)))
-
-#         results[utter]['train_acc']=results[utter]['train_acc']/int(np.max([num_pd//5,num_hc//5]))
-#         results[utter]['train_loss']=results[utter]['train_loss']/int(np.max([num_pd//5,num_hc//5]))
-#         results[utter]['test_loss']=results[utter]['test_loss']/int(np.max([num_pd//5,num_hc//5]))
+                results[utter]['bin_class'][hcId]=bin_class[cpi+int(num_pdHc_tests/2)]
 
     results.to_pickle(save_path+model+'_'+rep+"Results.pkl")
     
-    
-    
+
+

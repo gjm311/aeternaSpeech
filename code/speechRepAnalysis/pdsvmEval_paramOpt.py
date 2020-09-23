@@ -24,8 +24,8 @@ from sklearn.decomposition import TruncatedSVD
 MODELS=["CAE","RAE","ALL"]
 REPS=['spec','wvlt']    
 UNITS=256
-# UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
-UTTERS=['pataka']
+UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
+# UTTERS=['pataka']
 PATH=os.path.dirname(os.path.abspath(__file__))
 
 def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
@@ -121,55 +121,58 @@ if __name__=="__main__":
         num_hc=len(hcs)
         pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
         hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
-        pdTrainees=np.unique(pdFeats['wav_file'])
-        hcTrainees=np.unique(hcFeats['wav_file'])
-        pdTrainIds=np.arange(50)
-        hcTrainIds=np.arange(50,100)
-        pds=np.zeros((len(pdTrainees),num_feats,4))
-        hcs=np.zeros((len(hcTrainees),num_feats,4))
+        pdAll=np.unique(pdFeats['wav_file'])
+        hcAll=np.unique(hcFeats['wav_file'])
+        pdIds=np.arange(50)
+        hcIds=np.arange(50,100)
+        pds=np.zeros((len(pdAll),num_feats,4))
+        hcs=np.zeros((len(hcAll),num_feats,4))
         #getting bottle neck features and reconstruction error for training
-        for ii,tr in enumerate(pdTrainees):
-            tritr=pdTrainIds[ii]
+        for ii,tr in enumerate(pdAll):
+            tritr=pdIds[ii]
             pdTrBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[tritr])]
             pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
             pdTr=np.concatenate((pdTrBns,pdTrErrs),axis=1)
             pds[ii,:,:]=np.array([np.mean(pdTr,axis=0),np.std(pdTr,axis=0),skew(pdTr,axis=0),kurtosis(pdTr,axis=0)]).T
-        for ii,tr in enumerate(hcTrainees):
-            tritr=hcTrainIds[ii]
+        for ii,tr in enumerate(hcAll):
+            tritr=hcIds[ii]
             hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
             hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
             hcTr=np.concatenate((hcTrBns,hcTrErrs),axis=1)
             hcs[ii,:,:]=np.array([np.mean(hcTr,axis=0),np.std(hcTr,axis=0),skew(hcTr,axis=0),kurtosis(hcTr,axis=0)]).T
 
-        pdXTrain=np.reshape(pds,(pds.shape[0],num_feats*4))
-        hcXTrain=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
-        xTrain=np.concatenate((pdXTrain,hcXTrain),axis=0)
-        st_xTrain=StandardScaler().fit_transform(pd.DataFrame(xTrain))
+        pdXAll=np.reshape(pds,(pds.shape[0],num_feats*4))
+        hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
+        xAll=np.concatenate((pdXAll,hcXAll),axis=0)
         
-        
-        pca = PCA(n_components=min(xTrain.shape[0],xTrain.shape[1]))
-        pca.fit_transform(st_xTrain)
+        #standardize data and apply PCA. Choose nc based on # of corresponding eigenvectors with cum. variance>90%
+        st_xAll=StandardScaler().fit_transform(pd.DataFrame(xAll))
+        pca = PCA(n_components=min(xAll.shape[0],xAll.shape[1]))
+        pca.fit_transform(st_xAll)
         variance = pca.explained_variance_ratio_ #calculate variance ratios
         var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
         ncs=np.count_nonzero(var>90)
         pca = PCA(n_components=ncs)
-        pca_xTrain=pca.fit_transform(st_xTrain)
+        pca_xAll=pca.fit_transform(st_xAll)
         
+        #storing pca variance data
         pc_var_info[utter][0]=var
         pc_var_info.to_pickle(save_path+model+'_'+utter+'_'+rep+'_pc.pkl')
-
-        pdYTrain=np.ones((pdXTrain.shape[0])).T
-        hcYTrain=np.zeros((hcXTrain.shape[0])).T
-        yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
-        # to be standard sklearn's scorer        
-#         my_auc = make_scorer(custom_auc, greater_is_better=True, needs_proba=False)
+        
+        #labels for supervised training
+        pdYAll=np.ones((pdXAll.shape[0])).T
+        hcYAll=np.zeros((hcXAll.shape[0])).T
+        yAll=np.concatenate((pdYAll,hcYAll),axis=0)
+        
+        
         param_grid = [
           {'C':np.logspace(-10,5,15), 'gamma':np.logspace(-10,3,20), 'degree':[1,2,3],'kernel': ['linear','rbf','poly']},
         ]
-        cv = StratifiedShuffleSplit(n_splits=1, test_size=0.15, random_state=42)
+        
+        cv = StratifiedShuffleSplit(n_splits=10, test_size=0.15, random_state=42)
 #         grid = GridSearchCV(SVC(),scoring = my_auc, param_grid=param_grid, cv=cv)
-        grid = GridSearchCV(SVC(), param_grid=param_grid, cv=cv)
-        grid.fit(pca_xTrain, yTrain)
+        grid = GridSearchCV(SVC(probability=True), param_grid=param_grid, cv=cv)
+        grid.fit(pca_xAll, yAll)
         
     #         pipeline = Pipeline(
 #                 [("transformer", TruncatedSVD(n_components=70)),
@@ -182,11 +185,9 @@ if __name__=="__main__":
 
         
 
-        scores.append(grid.best_score_)
-        if grid.best_score_ > curr_best:
-            filename = save_path+model+'_'+utter+'_'+rep+'Grid.pkl'
-            with open(filename, 'wb') as file:
-                joblib.dump(grid, filename)
+        filename = save_path+model+'_'+utter+'_'+rep+'Grid.pkl'
+        with open(filename, 'wb') as file:
+            joblib.dump(grid, filename)
                 
     
     

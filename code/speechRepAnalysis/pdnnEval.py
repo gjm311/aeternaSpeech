@@ -109,7 +109,7 @@ if __name__=="__main__":
   
     BATCH_SIZE=1000
     NUM_W=0
-    N_EPOCHS=50000
+    N_EPOCHS=2500
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
     LR=10e-5
     if rep=='spec':
@@ -321,10 +321,14 @@ if __name__=="__main__":
 
                     #Wlog, if difference greater than 0 occurs more and speaker is PD, than identification is correct (1=PD,0=HC).
                     y_pred_tag=np.array(y_pred_tag)
-                    if trainIndc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
-                        tr_acc+=1
-                    elif trainIndc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
-                        tr_acc+=1
+#                     if trainIndc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
+#                         tr_acc+=1
+#                     elif trainIndc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
+#                         tr_acc+=1
+                    if trainIndc==1 :
+                        val_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
+                    elif trainIndc==0:
+                        val_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
 
                 trainResults_epo.iloc[epoch]['train_acc']=tr_acc/85
 
@@ -430,19 +434,19 @@ if __name__=="__main__":
                     #and if speaker is PD than classification assessment is correct (1=>PD,0=>HC).
                     test_loss+=test_loss_curr/len(test_loader.dataset)
                     y_pred_tag=np.array(y_pred_tag)
-#                     if indc==1:
-#                         if (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
-#                             test_acc+=1
-#                     if indc==0:
-#                         if (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
-#                             test_acc+=1
-                    if indc==1 :
-                        test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-                    elif indc==0:
-                        test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+                    if indc==1:
+                        if (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
+                            test_acc+=1
+                    if indc==0:
+                        if (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
+                            test_acc+=1
+#                     if indc==1 :
+#                         test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
+#                     elif indc==0:
+#                         test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
 
                     #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.
-                    testResults_curr[utter]['tstSpk_data'][tstId]=y_test_pred.cpu().detach().numpy()
+                    testResults_curr[utter]['tstSpk_data'][tstId]=np.median(y_test_pred.cpu().detach().numpy())
 
 
             #Store and report loss and accuracy for batch of test speakers.            

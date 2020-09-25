@@ -166,7 +166,7 @@ if __name__=="__main__":
         
         
         param_grid = [
-          {'C':np.logspace(-10,5,15), 'gamma':np.logspace(-10,3,20), 'degree':[1,2,3],'kernel': ['linear','rbf','poly']},
+          {'C':np.logspace(0,5,25), 'gamma':np.logspace(-8,-4,25), 'degree':[1],'kernel': ['rbf','poly']},
         ]
         
         cv = StratifiedShuffleSplit(n_splits=10, test_size=0.15, random_state=42)
@@ -184,7 +184,6 @@ if __name__=="__main__":
 #         grid_cv.fit(pca_xTrain, yTrain)
 
         
-
         filename = save_path+model+'_'+utter+'_'+rep+'Grid.pkl'
         with open(filename, 'wb') as file:
             joblib.dump(grid, filename)

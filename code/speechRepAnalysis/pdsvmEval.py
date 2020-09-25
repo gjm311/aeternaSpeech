@@ -60,12 +60,7 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     
     return feat_vecs
        
-    
-# define scoring function 
-# def custom_auc(ground_truth, predictions):
-#     fpr, tpr, _ = roc_curve(ground_truth, predictions, pos_label=1)    
-#     return auc(fpr, tpr)
-    
+
     
 if __name__=="__main__":
 
@@ -95,21 +90,17 @@ if __name__=="__main__":
     if not os.path.exists(save_path):
         os.makedirs(save_path)
         
-    mfda_path=PATH+"/pdSpanish/"
-    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    pd_mfdas=mfdas[0:50]
-    hc_mfdas=mfdas[50:]
+#     mfda_path=PATH+"/pdSpanish/"
+#     mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
+#     pd_mfdas=mfdas[0:50]
+#     hc_mfdas=mfdas[50:]
 
     if rep=='wvlt':
         num_feats=64+256
     else:
         num_feats=128+256
-    comp_range=np.arange(1,5)
-#     num_feats=256
-    
-    scores=[]
+
     results=pd.DataFrame({utter:{'train_acc':0,'test_acc':0,'bin_class':{},'class_report':{}} for utter in UTTERS})
-    
     for uIdx,utter in enumerate(UTTERS):
         curr_best=0
         pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
@@ -161,7 +152,11 @@ if __name__=="__main__":
         #split data into training and test with multiple iterations (90 training, 10 test per iter and evenly split PD:HC)
         pd_files=pdNames
         hc_files=hcNames
-        num_pdHc_tests=4 #must be even (same # of test pds and hcs per iter)
+        num_pdHc_tests=10 #must be even (same # of test pds and hcs per iter)
+        if  np.mod(num_pdHc_tests,2)!=0:
+            print("number of test spks must be even")
+            sys.exit()
+            
         for itr in range(int(num_spks/num_pdHc_tests)):
             rand_range=np.arange(num_spks)
             random.shuffle(rand_range)
@@ -175,8 +170,8 @@ if __name__=="__main__":
             hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
         
 #             testDict={spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])}
-            pdTest=np.zeros((num_pdHc_tests,ncs))
-            hcTest=np.zeros((num_pdHc_tests,ncs))
+            pdTest=np.zeros((num_pdHc_tests//2,ncs))
+            hcTest=np.zeros((num_pdHc_tests//2,ncs))
             for ii,pdItr in enumerate(pdIds):
                 pdTest[ii,:]=pca_xAll[pdItr,:]
             for ii,hcItr in enumerate(hcIds):
@@ -192,11 +187,11 @@ if __name__=="__main__":
             for ii,pdItr in enumerate(pdTrainIds):
                 pdTrain[ii,:]=pca_xAll[pdItr,:]
             for ii,hcItr in enumerate(hcTrainIds):
-                pdTrain[ii,:]=pca_xAll[hcItr,:]
+                hcTrain[ii,:]=pca_xAll[hcItr,:]
             
             xTrain=np.concatenate((pdTrain,hcTrain),axis=0)
             pdYTrain=np.ones((pdTrain.shape[0])).T
-            hcYTrain=np.zeros((pdTrain.shape[0])).T
+            hcYTrain=np.zeros((hcTrain.shape[0])).T
             yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
             
             xTest=np.concatenate((pdTest,hcTest),axis=0)
@@ -205,23 +200,24 @@ if __name__=="__main__":
             yTest=np.concatenate((pdYTest,hcYTest),axis=0)
             
             grid=joblib.load(PATH+"/pdSpanish/classResults/svm/params/"+model+'_'+utter+'_'+rep+'Grid.pkl')
-#             grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
-#                                 kernel=grid.best_params_['kernel'], probability=True)
-#             grid.fit(xTrain,yTrain)
+            grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
+                                kernel=grid.best_params_['kernel'], probability=True)
+            grid.fit(xTrain,yTrain)
             
             train_acc=grid.score(xTrain,yTrain)
             test_acc=grid.score(xTest,yTest)
             bin_class=grid.predict_proba(xTest)
+
 #             avg_precision=average_precision_score(yTest, grid.decision_function(xTest))
             class_report=classification_report(yTest,grid.predict(xTest))
-            results[utter]['train_acc']+=train_acc*(num_spks-num_pdHc_tests)*.01
+            results[utter]['train_acc']+=train_acc*num_pdHc_tests*.01
             results[utter]['test_acc']+=test_acc*num_pdHc_tests*.01
             results[utter]['class_report'][itr]=class_report  
             for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
                 results[utter]['bin_class'][pdId]=bin_class[cpi]     
                 results[utter]['bin_class'][hcId]=bin_class[cpi+int(num_pdHc_tests/2)]
-
-    results.to_pickle(save_path+model+'_'+rep+"Results.pkl")
+#         pdb.set_trace()
+        results.to_pickle(save_path+model+'_'+rep+"Results.pkl")
     
 
 

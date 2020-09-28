@@ -109,7 +109,7 @@ if __name__=="__main__":
   
     BATCH_SIZE=1000
     NUM_W=0
-    N_EPOCHS=2500
+    N_EPOCHS=1600
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
     LR=10e-5
     if rep=='spec':
@@ -196,29 +196,28 @@ if __name__=="__main__":
                 hcTest=np.concatenate((hcBns,hcErrs),axis=1)
                 testDict['hc'][hcItr]=hcTest
 
+            #Separate 5 Validation speakers
+            notTestSpks=[spk for spk in spks if spk not in pdCurrs+hcCurrs]
+            valids=[notTestSpks[idx] for idx in random.sample(range(0,len(notTestSpks)),5)]
+            valIds=[spks.index(valid) for valid in valids]
+            valDict={num:{'feats':[]} for num in valIds}
 
+            #getting bottle neck features and reconstruction error for validation speakers
+            for ii,val in enumerate(valids):
+                vitr=valIds[ii]
+                if vitr<num_pd:
+                    feats=pdFeats
+                else:
+                    feats=hcFeats
+                valBns=feats['bottleneck'][np.where(feats['wav_file']==spks[vitr])]
+                valErrs=feats['error'][np.where(feats['wav_file']==spks[vitr])]
+                valTest=np.concatenate((valBns,valErrs),axis=1)
+                valDict[vitr]=valTest
+                
             trainResults_epo= pd.DataFrame({'train_loss':0.0, 'train_acc':0.0,'val_loss':0.0, 'val_acc':0.0}, index=np.arange(N_EPOCHS))
             for epoch in range(N_EPOCHS):  
                 train_loss=0.0
                 train_acc=0.0
-
-                #Separate 5 Validation speakers per epoch
-                notTestSpks=[spk for spk in spks if spk not in pdCurrs+hcCurrs]
-                valids=[notTestSpks[idx] for idx in random.sample(range(0,len(notTestSpks)),5)]
-                valIds=[spks.index(valid) for valid in valids]
-                valDict={num:{'feats':[]} for num in valIds}
-
-                #getting bottle neck features and reconstruction error for validation speakers
-                for ii,val in enumerate(valids):
-                    vitr=valIds[ii]
-                    if vitr<num_pd:
-                        feats=pdFeats
-                    else:
-                        feats=hcFeats
-                    valBns=feats['bottleneck'][np.where(feats['wav_file']==spks[vitr])]
-                    valErrs=feats['error'][np.where(feats['wav_file']==spks[vitr])]
-                    valTest=np.concatenate((valBns,valErrs),axis=1)
-                    valDict[vitr]=valTest
 
                 #TRAIN dnn for each speaker individually.             
                 for trainItr in rand_range:   
@@ -321,14 +320,14 @@ if __name__=="__main__":
 
                     #Wlog, if difference greater than 0 occurs more and speaker is PD, than identification is correct (1=PD,0=HC).
                     y_pred_tag=np.array(y_pred_tag)
-#                     if trainIndc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
-#                         tr_acc+=1
-#                     elif trainIndc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
-#                         tr_acc+=1
-                    if trainIndc==1 :
-                        val_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-                    elif trainIndc==0:
-                        val_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+                    if trainIndc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
+                        tr_acc+=1
+                    elif trainIndc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
+                        tr_acc+=1
+#                    if trainIndc==1 :
+#                        tr_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
+#                    elif trainIndc==0:
+#                        tr_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
 
                 trainResults_epo.iloc[epoch]['train_acc']=tr_acc/85
 
@@ -347,7 +346,7 @@ if __name__=="__main__":
                     y_pred_tag=[]
                     xVal=valDict[vid]
                     test_data=testData(torch.FloatTensor(xVal))
-                    test_loader=torch.utils.data.DataLoader(test_data, batch_size=2, num_workers=NUM_W, drop_last=True, shuffle=True) 
+                    test_loader=torch.utils.data.DataLoader(test_data, batch_size=3, num_workers=NUM_W, drop_last=True, shuffle=True) 
 
                     model.eval()
                     with torch.no_grad():
@@ -368,14 +367,14 @@ if __name__=="__main__":
 
                     val_loss=val_loss/len(test_loader.dataset)
                     y_pred_tag=np.array(y_pred_tag)
-#                     if indc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
-#                         val_acc+=1
-#                     elif indc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
-#                         val_acc+=1
-                    if indc==1 :
-                        val_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-                    elif indc==0:
-                        val_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+                    if indc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
+                        val_acc+=1
+                    elif indc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
+                        val_acc+=1
+#                    if indc==1 :
+#                        val_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
+#                    elif indc==0:
+#                        val_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
                     
 
 #                        print('Validation Spk ID (<51 => pd, >50 => hc): {} Spk Frame Accuracy: {:.2f}'.format(
@@ -412,7 +411,7 @@ if __name__=="__main__":
                     test_loss_curr=0
                     xTest=dic[tstId]
                     test_data=testData(torch.FloatTensor(xTest))
-                    test_loader=torch.utils.data.DataLoader(test_data, batch_size=2, num_workers=NUM_W, drop_last=True, shuffle=True)  
+                    test_loader=torch.utils.data.DataLoader(test_data, batch_size=3, num_workers=NUM_W, drop_last=True, shuffle=True)  
 
                     model.eval()
                     with torch.no_grad():
@@ -440,13 +439,13 @@ if __name__=="__main__":
                     if indc==0:
                         if (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
                             test_acc+=1
-#                     if indc==1 :
-#                         test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-#                     elif indc==0:
-#                         test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+#                    if indc==1 :
+#                        test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
+#                    elif indc==0:
+#                        test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
 
                     #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.
-                    testResults_curr[utter]['tstSpk_data'][tstId]=np.median(y_test_pred.cpu().detach().numpy())
+                    testResults_curr[utter]['tstSpk_data'][tstId]=y_test_pred.cpu().detach().numpy()
 
 
             #Store and report loss and accuracy for batch of test speakers.            

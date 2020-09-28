@@ -22,7 +22,7 @@ if __name__ == "__main__":
     if len(sys.argv)!=2:
         print("python get_rep.py <path_audios>")
         sys.exit()
-    
+#    "./tedx_spanish_corpus/speech/"
     if sys.argv[1][0] != '/':
         sys.argv[1] = '/'+sys.argv[1]
         

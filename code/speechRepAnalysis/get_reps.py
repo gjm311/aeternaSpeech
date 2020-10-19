@@ -9,11 +9,13 @@ import scipy
 import numpy as np
 import numpy.fft
 import cv2
+import json
+import argparse
+import pdb
 
 from librosa.feature import melspectrogram
 
 import toolbox.traintestsplit as tts
-import matplotlib.pyplot as plt
 
 
 
@@ -31,39 +33,41 @@ if __name__ == "__main__":
 
     PATH=os.path.dirname(os.path.abspath(__file__))
     PATH_AUDIO=PATH+sys.argv[1]
-    PATH_SPEC=PATH_AUDIO+"/../reps/spec/"
+    PATH_BB=PATH_AUDIO+"/../reps/broadband/"
+    PATH_NB=PATH_AUDIO+"/../reps/narrowband/"
     PATH_WVLT=PATH_AUDIO+"/../reps/wvlt/"
     
-    if not os.path.exists(PATH_SPEC):
-        os.makedirs(PATH_SPEC)
+    with open("config.json") as f:
+        data = f.read()
+    config = json.loads(data)
+    
+    FS=config['general']['FS']
+    tst_percent=config['general']['ae_tst_percent']
+    
+    
+    if not os.path.exists(PATH_BB):
+        os.makedirs(PATH_BB)
+    if not os.path.exists(PATH_NB):
+        os.makedirs(PATH_NB)
     if not os.path.exists(PATH_WVLT):
         os.makedirs(PATH_WVLT)
         
     if not os.path.exists(PATH_AUDIO+'/train/'):
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.5)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=tst_percent)
         split.fileTrTstSplit()
     elif len(os.listdir(PATH_AUDIO+'/train/'))<=2:
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=0.5)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=tst_percent)
         split.fileTrTstSplit()
     
-    FS=16000
-    NFFT=512
-    FRAME_SIZE=0.5
-    TIME_SHIFT=0.25
-    HOP=64
-    NMELS=128
-    DIM=()
-    SNIP_LEN=50#in mS
-    
-    minSpec_en = np.inf
-    maxSpec_en = -np.inf
-    minWvlt_en = np.inf
-    maxWvlt_en = -np.inf
-    enrgy = {'Min spec Scale': [], 'Max spec Scale': [], 'Min wvlt Scale': [], 'Max wvlt Scale': []}
-    
+    enrgy = {'Min nb Scale': [], 'Max nb Scale': [], 'Min bb Scale': [], 'Max bb Scale': []}
+    minBB_en = np.inf
+    maxBB_en = -np.inf
+    minNB_en = np.inf
+    maxNB_en = -np.inf
     for trtst in ['/train/', '/test/']:
         audio_path=PATH_AUDIO+trtst
-        spec_path=PATH_SPEC+trtst
+        bb_path=PATH_BB+trtst
+        nb_path=PATH_NB+trtst
         wvlt_path=PATH_WVLT+trtst
         
         hf=os.listdir(audio_path)
@@ -74,8 +78,10 @@ if __name__ == "__main__":
         else:
             print(audio_path, len(hf))
 
-        if not os.path.exists(spec_path):
-            os.makedirs(spec_path)
+        if not os.path.exists(bb_path):
+            os.makedirs(bb_path)
+        if not os.path.exists(nb_path):
+            os.makedirs(nb_path)
         if not os.path.exists(wvlt_path):
             os.makedirs(wvlt_path)
 
@@ -85,8 +91,8 @@ if __name__ == "__main__":
         for j in range(len(hf)):
             print("Procesing audio", j+1, hf[j]+" of "+str(len(hf)))
             fs_in, data=read(audio_path+hf[j])
-            if fs_in!=16000:
-                raise ValueError(str(fs)+" is not a valid sampling frequency")
+            if fs_in!=FS:
+                raise ValueError(str(fs_in)+" is not a valid sampling frequency")
             
            
             if len(data.shape)>1:
@@ -94,47 +100,121 @@ if __name__ == "__main__":
             data=data-np.mean(data)
             data=data/np.max(np.abs(data))
             
-            file_spec_out=spec_path+hf[j].replace(".wav", "")
+            file_bb_out=bb_path+hf[j].replace(".wav", "")
+            file_nb_out=nb_path+hf[j].replace(".wav", "")
             file_wvlt_out=wvlt_path+hf[j].replace(".wav", "")
-            if os.path.isfile(file_wvlt_out) and os.path.isfile(file_spec_out):
-                continue            
+            if os.path.isfile(file_wvlt_out) and os.path.isfile(file_bb_out) and os.path.isfile(file_nb_out):
+                continue        
                 
-            NFR=int(data.shape[0]*1000/(FS*SNIP_LEN))
-            WV_FRAME_SIZE=int(data.shape[0]/NFR)
-            OVRLP=0.5
-            SHIFT=int(WV_FRAME_SIZE*OVRLP)
-            NBF=64
-            TIME_STEPS=512
-            DIM=(TIME_STEPS,NBF)
                 
-            init=0
-            endi=WV_FRAME_SIZE
-            wv_mat=np.zeros((1,NBF,TIME_STEPS),dtype=np.float32)
+#             SNIP_LEN=config['wavelet']['SNIP_LEN']
+#             NBF=config['wavelet']['NBF']
+#             TIME_STEPS=config['wavelet']['TIME_STEPS']
+#             OVRLP=config['wavelet']['OVRLP']
+#             NFR=int(data.shape[0]*1000/(FS*SNIP_LEN))
+#             WV_FRAME_SIZE=int(data.shape[0]/NFR)
+#             SHIFT=int(WV_FRAME_SIZE*OVRLP)
+#             DIM=(TIME_STEPS,NBF)
+                
+#             init=0
+#             endi=WV_FRAME_SIZE
+#             wv_mat=np.zeros((1,NBF,TIME_STEPS),dtype=np.float32)
             
-            for k in range(NFR):    
-                frame=data[init:endi]                         
-                init=init+int(SHIFT)
-                endi=endi+int(SHIFT)
-                cwtmatr,_ = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
+#             for k in range(NFR):    
+#                 frame=data[init:endi]                         
+#                 init=init+int(SHIFT)
+#                 endi=endi+int(SHIFT)
+#                 cwtmatr,_ = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
 
-                bicubic_img = cv2.resize(np.real(cwtmatr),DIM,interpolation=cv2.INTER_CUBIC)
+#                 bicubic_img = cv2.resize(np.real(cwtmatr),DIM,interpolation=cv2.INTER_CUBIC)
                 
-                #Looking for min/max coefficients for standardization.
-                max_curr = np.max(bicubic_img)
-                min_curr = np.min(bicubic_img)
-                if max_curr > maxWvlt_en:
-                    maxWvlt_en = max_curr
-                if min_curr < minWvlt_en:
-                    minWvlt_en = min_curr    
+# #                 #Looking for min/max coefficients for standardization.
+# #                 max_curr = np.max(bicubic_img)
+# #                 min_curr = np.min(bicubic_img)
+# #                 if max_curr > maxWvlt_en:
+# #                     maxWvlt_en = max_curr
+# #                 if min_curr < minWvlt_en:
+# #                     minWvlt_en = min_curr    
                 
-                wv_mat[0,:,:]=bicubic_img
-                np.save(file_wvlt_out+"_"+str(k)+".npy",wv_mat)
+#                 wv_mat[0,:,:]=bicubic_img
+#                 np.save(file_wvlt_out+"_"+str(k)+".npy",wv_mat)
     
-            init=0
-            num_samples=int(FRAME_SIZE*FS)
-            endi=num_samples
+         
+            BB_TIME_WINDOW=config['mel_spec']['BB_TIME_WINDOW']
+            BB_HOP=config['mel_spec']['BB_HOP']
+            BB_NMELS=config['mel_spec']['BB_NMELS']
+            NB_TIME_WINDOW=config['mel_spec']['NB_TIME_WINDOW']
+            NB_HOP=config['mel_spec']['NB_HOP']
+            NB_NMELS=config['mel_spec']['NB_NMELS']
             
-           
+            INTERP_NMELS=config['mel_spec']['INTERP_NMELS']
+            TIME_STEPS=config['mel_spec']['TIME_STEPS']
+            FRAME_SIZE=config['mel_spec']['FRAME_SIZE']
+            TIME_SHIFT=config['mel_spec']['TIME_SHIFT']
+            sig_len=len(data)
+            
+            for nb,band in enumerate([file_bb_out,file_nb_out]):
+                
+                #binary narrowband: 1 yes, 0 no (i.e. broadband)
+                if nb==0:
+                    #broadband: higher time resolution, less frequency resolution
+                    HOP=int(FS*BB_HOP)#3ms hop (48 SAMPLES)
+                    NFFT=int(FS*BB_TIME_WINDOW)#5ms time window (60 SAMPLES)
+                    NMELS=BB_NMELS
+                elif nb==1:
+                    #narrowband: higher frequency resolution, less time resolution
+                    HOP=int(FS*NB_HOP) #10ms hop (160 SAMPLES)
+                    NFFT=int(FS*NB_TIME_WINDOW) #30ms time window (480 SAMPLES)
+                    NMELS=NB_NMELS
+
+                init=0
+                endi=int(FRAME_SIZE*FS)
+                nf=int(len(data)/(TIME_SHIFT*FS))-1
+
+                if nf>0:
+                    mat=np.zeros((1,INTERP_NMELS,TIME_STEPS), dtype=np.float32)
+                    for k in range(nf):
+                        frame=data[init:endi]
+                        imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
+                        imag=imag[np.where(imag[:,0]>0)]
+                        imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
+                        imag=np.abs(imag)
+                        init=init+int(TIME_SHIFT*FS)
+                        endi=endi+int(TIME_SHIFT*FS)
+                        if np.min(np.min(imag))<=0:
+                            warnings.warns("There is Inf values in the Mel spectrogram")
+                            continue
+                        imag=np.log(imag, dtype=np.float32)
+                        mat[0,:,:]=imag
+                        np.save(band+"_"+str(k)+".npy",mat)
+                        
+                        max_curr = np.max(imag)
+                        min_curr = np.min(imag)
+                        if nb==0:
+                            if max_curr > maxBB_en:
+                                maxBB_en = max_curr
+                            if min_curr < minBB_en:
+                                minBB_en = min_curr  
+                        elif nb==1:
+                            if max_curr > maxNB_en:
+                                maxNB_en = max_curr
+                            if min_curr < minNB_en:
+                                minNB_en = min_curr   
+                else:
+                    print("WARNING, audio too short", hf[j], len(data))
+                    countbad+=1
+
+    enrgy['Min nb Scale'].append(minNB_en)
+    enrgy['Max nb Scale'].append(maxNB_en)
+    enrgy['Min bb Scale'].append(minBB_en)
+    enrgy['Max bb Scale'].append(maxBB_en)
+    df = pd.DataFrame(data=enrgy)
+    df.to_csv(PATH+'/scales.csv')
+
+            
+#             init=0
+#             num_samples=int(FRAME_SIZE*FS)
+#             endi=num_samples
             
 #             nf=int(len(data)/(TIME_SHIFT*FS))-1
 #             if nf>0:
@@ -170,15 +250,15 @@ if __name__ == "__main__":
 #                 print("WARNING, audio too short", hf[j], len(data))
 #                 countbad+=1
                 
-#     enrgy['Min wvlt Scale'].append(minWvlt_en)
-#     enrgy['Max wvlt Scale'].append(maxWvlt_en)
-#     enrgy['Min spec Scale'].append(minSpec_en)
-#     enrgy['Max spec Scale'].append(maxSpec_en)
-#     df = pd.DataFrame(data=enrgy)
-#     df.to_csv(PATH+'/scales.csv')
+# #     enrgy['Min wvlt Scale'].append(minWvlt_en)
+# #     enrgy['Max wvlt Scale'].append(maxWvlt_en)
+# #     enrgy['Min spec Scale'].append(minSpec_en)
+# #     enrgy['Max spec Scale'].append(maxSpec_en)
+# #     df = pd.DataFrame(data=enrgy)
+# #     df.to_csv(PATH+'/scales.csv')
 
-#     print(countbad)
-#     print(countinf)
+# #     print(countbad)
+# #     print(countinf)
 
 
 

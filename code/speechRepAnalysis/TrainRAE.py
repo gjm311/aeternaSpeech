@@ -8,6 +8,8 @@ import sys
 from RAE import RAEn
 from wvRAE import wvRAEn
 import toolbox.traintestsplit as tts
+import json
+import argparse
 
 
 def standard(tensor, minval, maxval):
@@ -36,7 +38,7 @@ if __name__=="__main__":
     if len(sys.argv)!=4:
         print("python TrainRAE.py <bottleneck_sizes> <rep path> <chkpt_path>")
         sys.exit()
-    #repPath: "./tedx_spanish_corpus/reps/'wvlt or spec'/train/" 
+    #repPath: "./tedx_spanish_corpus/reps/'wvlt or spec/(bb or nb)'/train/" 
     #chkpt_path: "./pts/checkpoints/" 
     
     if sys.argv[3]:
@@ -71,18 +73,27 @@ if __name__=="__main__":
         split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
         split.fileTrTstSplit()
    
+    with open("config.json") as f:
+        data = f.read()
+    config = json.loads(data)
+    
+    FS=config['general']['FS']
+    NUM_W=config['RAE']['NUM_W']
+    N_EPOCHS=config['RAE']['N_EPOCHS']
+    NTRAIN=config['RAE']['NTRAIN']
+    NVAL=config['RAE']['NVAL']
+    LR=config['RAE']['LR']
+    nb=config['mel_spec']['nb']
+    
     PATH_TRAIN=path_rep+"/train/"
     PATH_TEST=path_rep+"/test/"
-    
-    NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
-    N_EPOCHS = 25
-    #SCALERS = pd.read_csv("scales.csv")
-    MIN_SCALER=-41.0749397
-    MAX_SCALER=6.720702
-    NTRAIN=6000
-    NVAL=500
-    LR=.0001
+#     SCALERS = pd.read_csv("scales.csv")
+#     MIN_SCALER= float(SCALERS['Min '+rep_typ+' Scale']) #MIN value of total energy.
+#     MAX_SCALER= float(SCALERS['Max '+rep_typ+' Scale'])  #MAX value of total energy.
+    MIN_SCALER=-41.0749397277832
+    MAX_SCALER=6.720702171325684
+    
     
     train=SpecDataset(PATH_TRAIN)
     test=SpecDataset(PATH_TEST)
@@ -96,14 +107,19 @@ if __name__=="__main__":
     
     if rep_typ=='spec':
         model=RAEn(BOTTLE_SIZE)
+        if nb==1:
+            save_path = PATH+"/pts/"+rep_typ+'/nb/'
+        elif nb==0:
+            save_path = PATH+"/pts/"+rep_typ+'/bb/'
     elif rep_typ=='wvlt':
         model=wvRAEn(BOTTLE_SIZE)
+        save_path = PATH+"/pts/"+rep_typ+'/'
+        
+        
+    if not os.path.isdir(save_path):
+        os.mkdir(save_path)
+        
     criterion = torch.nn.MSELoss()    
-   
-    if rep_typ=='spec':
-        model=CAEn(BOTTLE_SIZE)
-    elif rep_typ=='wvlt':
-        model=wvCAEn(BOTTLE_SIZE)
     optimizer = torch.optim.Adam(model.parameters(), lr = LR)
     epochs=np.arange(N_EPOCHS)
          
@@ -218,7 +234,7 @@ if __name__=="__main__":
             torch.save({'model': model.state_dict(),
                     'epoch': epoch,
                     'optimizer': optimizer.state_dict(),
-                    'learning_rate': lr}, save_path+'/'+str(BOTTLE_SIZE)+'_RAE.pt')
+                    'learning_rate': LR}, save_path+'/'+str(BOTTLE_SIZE)+'_RAE.pt')
             valid_loss_min = valid_loss
         if epoch==0:
             f=open(save_path+'/loss_'+str(BOTTLE_SIZE)+'_RAE.csv', "a")

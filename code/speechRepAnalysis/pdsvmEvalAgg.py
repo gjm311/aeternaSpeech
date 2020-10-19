@@ -5,7 +5,6 @@ import pandas as pd
 import pickle
 import random
 import pdb
-# import xgboost as xgb
 from AEspeech import AEspeech
 from scipy.stats import kurtosis, skew
 from sklearn import svm, datasets
@@ -21,42 +20,55 @@ from sklearn.pipeline import Pipeline
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import classification_report
+import json
+import argparse
 
-MODELS=["CAE","RAE","ALL"]
-REPS=['spec','wvlt']    
-UNITS=256
-UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
-# UTTERS=['pataka']
+
 PATH=os.path.dirname(os.path.abspath(__file__))
+#LOAD CONFIG.JSON INFO
+with open("config.json") as f:
+    data = f.read()
+config = json.loads(data)
+UNITS=config['general']['UNITS']
+UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
+MODELS=["CAE","RAE","ALL"]
+REPS=['spec','wvlt']
+# UTTERS=['pataka']
 
-def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
+
+def saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ):
     global UNITS    
     # load the pretrained model with 256 units and get temp./freq. rep (spec or wvlt)
     aespeech=AEspeech(model=model,units=UNITS,rep=rep) 
     
     #compute the bottleneck and error-based features from a directory with wav files inside 
-    #(dynamic: one feture vector for each 500 ms (mel-freq) or 50 ms (wvlt) frame)
+    #(dynamic: one feture vector for each 500 ms frame)
     #(global i.e. static: one feture vector per utterance)
     feat_vecs=aespeech.compute_dynamic_features(wav_path)
     #     df1, df2=aespeech.compute_global_features(wav_path)
     
-    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
+    with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
         pickle.dump(feat_vecs, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
     return feat_vecs
             
 
-def getFeats(model,units,rep,wav_path,utter,spk_typ):
+def getFeats(model,units,nb,rep,wav_path,utter,spk_typ):
     global PATH
     save_path=PATH+"/"+"pdSpanish/feats/"+utter+"/"
     if not os.path.exists(save_path):
-        os.makedirs(save_path)    
+        os.makedirs(save_path)
         
-    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle'):
-        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
+    if rep=='spec' and nb==1:
+        band_typ='nb'
+    elif rep=='spec' and nb==0:
+        band_typ='bb'
+        
+    if os.path.isfile(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle'):
+        with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
             feat_vecs = pickle.load(handle)
     else:
-        feat_vecs=saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ)
+        feat_vecs=saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ)
     
     return feat_vecs
        
@@ -94,11 +106,18 @@ if __name__=="__main__":
 #     mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
 #     pd_mfdas=mfdas[0:50]
 #     hc_mfdas=mfdas[50:]
-
+    
+    
+    nb=config['mel_spec']['nb']
     if rep=='wvlt':
-        num_feats=64+256
+        num_feats=config['wavelet']['NBF']+UNITS
     else:
-        num_feats=128+256
+        if nb==1:
+            band_typ='nb'
+            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
+        elif nb==0:
+            band_typ='bb'
+            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
     
     data={utter:{} for utter in UTTERS}
     
@@ -117,8 +136,8 @@ if __name__=="__main__":
         num_spks=len(spks)
         num_pd=len(pdNames)
         num_hc=len(hcNames)
-        pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
-        hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
+        pdFeats=getFeats(model,UNITS,rep,nb,pd_path,utter,'pd')
+        hcFeats=getFeats(model,UNITS,rep,nb,hc_path,utter,'hc')
         pdAll=np.unique(pdFeats['wav_file'])
         hcAll=np.unique(hcFeats['wav_file'])
         pdIds=np.arange(50)
@@ -128,15 +147,17 @@ if __name__=="__main__":
         for ii,tr in enumerate(pdAll):
             tritr=pdIds[ii]
             pdTrBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[tritr])]
+            pdTrBns=np.array([np.mean(pdTrBns,axis=0),np.std(pdTrBns,axis=0),skew(pdTrBns,axis=0),kurtosis(pdTrBns,axis=0)])
             pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
-            pdTr=np.concatenate((pdTrBns,pdTrErrs),axis=1)
-            pds[(ii*num_utters)+uIdx,:,:]=np.array([np.mean(pdTr,axis=0),np.std(pdTr,axis=0),skew(pdTr,axis=0),kurtosis(pdTr,axis=0)]).T
+            pdTrErrs=np.array([np.mean(pdTrErrs,axis=0),np.std(pdTrErrs,axis=0),skew(pdTrErrs,axis=0),kurtosis(pdTrErrs,axis=0)])
+            pds[(ii*num_utters)+uIdx,:,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
         for ii,tr in enumerate(hcAll):
             tritr=hcIds[ii]
             hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
+            hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
             hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
-            hcTr=np.concatenate((hcTrBns,hcTrErrs),axis=1)
-            hcs[(ii*num_utters)+uIdx,:,:]=np.array([np.mean(hcTr,axis=0),np.std(hcTr,axis=0),skew(hcTr,axis=0),kurtosis(hcTr,axis=0)]).T
+            hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
+            hcs[(ii*num_utters)+uIdx,:,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
 
     pdXAll=np.reshape(pds,(pds.shape[0],num_feats*4))
     hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
@@ -147,79 +168,91 @@ if __name__=="__main__":
     pca.fit_transform(st_xAll)
     variance = pca.explained_variance_ratio_ #calculate variance ratios
     var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
-    ncs=np.count_nonzero(var>90)
+    ncs=np.count_nonzero(var<90)
     pca = PCA(n_components=ncs)
     pca_xAll=pca.fit_transform(st_xAll)
-              
+    
     #split data into training and test with multiple iterations (90 training, 10 test per iter and evenly split PD:HC)
-    pd_files=pdNames
-    hc_files=hcNames
-    num_pdHc_tests=10 #must be even (same # of test pds and hcs per iter)
+    num_pdHc_tests=config['svm']['tst_spks']#must be even (same # of test pds and hcs per iter)
+    nv=config['svms']['val_spks']#number of validation speakers per split#must be even and a divisor of num_spks (same # of test pds and hcs per iter)
     if  np.mod(num_pdHc_tests,2)!=0:
-        print("number of test spks must be even")
+        print("number of test spks must be even...")
+        sys.exit()
+    if  np.mod(100,num_pdHc_tests)!=0:
+        print("number of test spks must be a divisor of 100...")
         sys.exit()
     
-    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'bin_class':{},'class_report':{}}})
-    for itr in range(int(num_spks/num_pdHc_tests)):
-        rand_range=np.arange(num_spks)
-        random.shuffle(rand_range)
+    total_itrs=config['svm']['iterations']
+    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    
+    for o_itr in range(total_itrs):
+        pd_files=pdNames
+        hc_files=hcNames
+        
+        for itr in range(int(num_spks/num_pdHc_tests)):
+            pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),int(num_pdHc_tests/2))]
+            hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),int(num_pdHc_tests/2))]
+            pd_files=[pd for pd in pd_files if pd not in pdCurrs]
+            hc_files=[hc for hc in hc_files if hc not in hcCurrs]
 
-        pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),int(num_pdHc_tests/2))]
-        hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),int(num_pdHc_tests/2))]
-        pd_files=[pd for pd in pd_files if pd not in pdCurrs]
-        hc_files=[hc for hc in hc_files if hc not in hcCurrs]
-
-        pdIds=[spks.index(pdCurr) for pdCurr in pdCurrs]
-        hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
-
-#             testDict={spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])}
-        pdTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
-        hcTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
-        for ii,pdItr in enumerate(pdIds):
-            pdTest[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[pdItr*num_utters:(pdItr+1)*num_utters,:]
-        for ii,hcItr in enumerate(hcIds):
-            hcTest[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[hcItr*num_utters:(hcItr+1)*num_utters,:]
+            pdIds=[spks.index(pdCurr) for pdCurr in pdCurrs]
+            hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
             
-        pdTrainees=[spk for idx,spk in enumerate(pdNames) if spk not in pdCurrs]
-        hcTrainees=[spk for idx,spk in enumerate(hcNames) if spk not in hcCurrs]
-        pdTrainIds=[spks.index(tr) for tr in pdTrainees]
-        hcTrainIds=[spks.index(tr) for tr in hcTrainees]
+            pdTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
+            hcTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
+            for ii,pdItr in enumerate(pdIds):
+                pdTest[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[pdItr*num_utters:(pdItr+1)*num_utters,:]
+            for ii,hcItr in enumerate(hcIds):
+                hcTest[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[hcItr*num_utters:(hcItr+1)*num_utters,:]
 
-        pdTrain=np.zeros(((num_pd-int(num_pdHc_tests/2))*num_utters,ncs))
-        hcTrain=np.zeros(((num_hc-int(num_pdHc_tests/2))*num_utters,ncs))
-        for ii,pdItr in enumerate(pdTrainIds):
-            pdTrain[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[pdItr*num_utters:(pdItr+1)*num_utters,:]
-        for ii,hcItr in enumerate(hcTrainIds):
-            hcTrain[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[hcItr*num_utters:(hcItr+1)*num_utters,:]
+            pdTrainees=[spk for idx,spk in enumerate(pdNames) if spk not in pdCurrs]
+            hcTrainees=[spk for idx,spk in enumerate(hcNames) if spk not in hcCurrs]
+            pdTrainIds=[spks.index(tr) for tr in pdTrainees]
+            hcTrainIds=[spks.index(tr) for tr in hcTrainees]
 
-        xTrain=np.concatenate((pdTrain,hcTrain),axis=0)
-        pdYTrain=np.ones((pdTrain.shape[0])).T
-        hcYTrain=np.zeros((hcTrain.shape[0])).T
-        yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
+            pdTrain=np.zeros(((num_pd-int(num_pdHc_tests/2))*num_utters,ncs))
+            hcTrain=np.zeros(((num_hc-int(num_pdHc_tests/2))*num_utters,ncs))
+            for ii,pdItr in enumerate(pdTrainIds):
+                pdTrain[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[pdItr*num_utters:(pdItr+1)*num_utters,:]
+            for ii,hcItr in enumerate(hcTrainIds):
+                hcTrain[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[hcItr*num_utters:(hcItr+1)*num_utters,:]
+            xTrain=np.concatenate((pdTrain,hcTrain),axis=0)
+            pdYTrain=np.ones((pdTrain.shape[0])).T
+            hcYTrain=np.zeros((hcTrain.shape[0])).T
+            yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
+            xTest=np.concatenate((pdTest,hcTest),axis=0)
+            pdYTest=np.ones((pdTest.shape[0])).T
+            hcYTest=np.zeros((pdTest.shape[0])).T
+            yTest=np.concatenate((pdYTest,hcYTest),axis=0)
 
-        xTest=np.concatenate((pdTest,hcTest),axis=0)
-        pdYTest=np.ones((pdTest.shape[0])).T
-        hcYTest=np.zeros((pdTest.shape[0])).T
-        yTest=np.concatenate((pdYTest,hcYTest),axis=0)
+            param_grid = [
+              {'C':np.logspace(0,5,25), 'gamma':np.logspace(-8,-4,25), 'degree':[1],'kernel': ['rbf']},
+                ]
 
-        grid=joblib.load(PATH+"/pdSpanish/classResults/svm/params/"+model+'_'+rep+'aggGrid.pkl')
-#         grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
-#                             kernel=grid.best_params_['kernel'], probability=True)
-        grid.fit(xTrain,yTrain)
+            cv = StratifiedShuffleSplit(n_splits=4, test_size=0.2, random_state=42)
+    #         grid = GridSearchCV(SVC(),scoring = my_auc, param_grid=param_grid, cv=cv)
+            grid = GridSearchCV(SVC(probability=True), param_grid=param_grid, cv=cv)
+            grid.fit(xTrain, yTrain)
+            grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
+                                kernel=grid.best_params_['kernel'], probability=True)
 
-        train_acc=grid.score(xTrain,yTrain)
-        test_acc=grid.score(xTest,yTest)
-        bin_class=grid.predict_proba(xTest)
+            grid.fit(xTrain,yTrain)
 
-#             avg_precision=average_precision_score(yTest, grid.decision_function(xTest))
-        class_report=classification_report(yTest,grid.predict(xTest))
-        results['Data']['train_acc']+=train_acc*num_pdHc_tests*.01
-        results['Data']['test_acc']+=test_acc*num_pdHc_tests*.01
-        results['Data']['class_report'][itr]=class_report  
-        for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
-            results['Data']['bin_class'][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
-            results['Data']['bin_class'][hcId]=bin_class[cpi*num_utters:(cpi+1)*num_utters+int(num_pdHc_tests/2)]
-        pdb.set_trace()
+            train_acc=grid.score(xTrain,yTrain)
+            test_acc=grid.score(xTest,yTest)
+            bin_class=grid.predict_proba(xTest)
+    #             avg_precision=average_precision_score(yTest, grid.decision_function(xTest))
+            class_report=classification_report(yTest,grid.predict(xTest))
+            results['Data']['train_acc']+=train_acc*(1/(num_pdHc_tests*total_itrs))
+            results['Data']['test_acc']+=test_acc*(1/(num_pdHc_tests*total_itrs))
+            results['Data']['class_report'][o_itr][itr]=class_report  
+            for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
+                results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
+                results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
+
+    if rep=='spec':
+        results.to_pickle(save_path+model+'_'+rep+"_"+band_typ+"_aggResults.pkl")
+    elif rep=='wvlt':
         results.to_pickle(save_path+model+'_'+rep+"_aggResults.pkl")
 
 

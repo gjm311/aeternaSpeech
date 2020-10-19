@@ -22,22 +22,19 @@ import pywt
 import scaleogram as scg
 import numpy as np
 import cv2
+import json
+import argparse
 import warnings
 warnings.filterwarnings("ignore", message="WavFileWarning: Chunk (non-data) not understood, skipping it.")
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy.stats as st
+import pdb
 
-CBAR_DEFAULTS = {
-    'vertical'   : { 'aspect':30, 'pad':0.03, 'fraction':0.05 },
-    'horizontal' : { 'aspect':40, 'pad':0.12, 'fraction':0.05 }
-}
-
-COI_DEFAULTS = {
-    'alpha':'0.5',
-    'hatch':'/',
-}
+with open("config.json") as f:
+        data = f.read()
+config = json.loads(data)
 
 
 
@@ -48,26 +45,37 @@ class AEspeech:
         Feature extraction from speech signals based on representation learning strategies using convolutional and recurrent autoencoders
         :param model: type of autoencoder to extract the features from ('CAE': convolutional autoencoders, 'RAE': recurrent autoencoder)
         :param units: number of hidden neurons in the bottleneck space (64, 128, 256, 512, 1024)
+        :param nb: binary indicator of whether mel-spectrogram should be computed via broadband (0) or narrowband (1-default) representation.
         :returns: AEspeech Object.
         """
         self.model_type=model
         self.units=units
         self.rep=rep
         self.PATH=os.path.dirname(os.path.abspath(__file__))
+        self.nb=config['mel_spec']['nb']
 #         try:
-        scalers = pd.read_csv(self.PATH+"/scales.csv")
-        self.min_scaler = float(scalers['Min '+rep+' Scale']) #MIN value of total energy.
-        self.max_scaler = float(scalers['Max '+rep+' Scale'])  #MAX value of total energy.
+#         scalers = pd.read_csv(self.PATH+"/scales.csv")
+#         self.min_scaler = float(scalers['Min '+rep+' Scale']) #MIN value of total energy.
+#         self.max_scaler = float(scalers['Max '+rep+' Scale'])  #MAX value of total energy.
+        self.min_scaler=-41.0749397277832
+        self.max_scaler=6.720702171325684
+
 #         except:
 #             print("Scalers not found..")
             
         self.nmels=nmels
         self.waveletype = waveletype
         
-        pt_path = self.PATH+"/pts/"+rep+"/"
+        if rep=='wvlt':
+            pt_path = self.PATH+"/pts/"+rep+"/"
+        elif rep=='spec':
+            if self.nb==0:
+                pt_path = self.PATH+"/pts/"+rep+"/bb/"
+            elif self.nb==1:
+                pt_path = self.PATH+"/pts/"+rep+"/nb/"
         if not os.path.isdir(pt_path):                          
             print("Inputs are wrong or 'pts' directory is incorect...")
-        
+
         if model=="CAE":
             if rep=='spec':
                 self.AE=CAEn(units)
@@ -79,10 +87,10 @@ class AEspeech:
             elif rep=='wvlt':
                 self.AE=wvCAEn(units)
                 if torch.cuda.is_available():
-                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt'))
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt')['model'])
                     self.AE.cuda()
                 else:
-                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt', map_location='cpu'))
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt', map_location='cpu')['model'])
                     
         elif model=="RAE":
             if rep=='spec':
@@ -111,16 +119,25 @@ class AEspeech:
         :param wav_file: *.wav file with a sampling frequency of 16kHz
         :returns: Pytorch tensor (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of Mel frequencies (128), T: time steps (126)
         """        
+        FS=config['general']['FS']
+        FRAME_SIZE=config['mel_spec']['FRAME_SIZE']
+        TIME_SHIFT=config['mel_spec']['TIME_SHIFT']
+        TIME_STEPS=config['mel_spec']['TIME_STEPS']
+        INTERP_NMELS=config['mel_spec']['INTERP_NMELS']
         
-        FS=16000
-        NFFT=512
-        FRAME_SIZE=0.5
-        TIME_SHIFT=0.25
-        HOP=64
+        if self.nb==0:
+            HOP=config['mel_spec']['BB_HOP']
+            NMELS=config['mel_spec']['BB_NMELS']
+            NFFT=config['mel_spec']['BB_NFFT']
+        if self.nb==1:
+            HOP=config['mel_spec']['NB_HOP']
+            NMELS=config['mel_spec']['NB_NMELS']
+            NFFT=config['mel_spec']['NB_NFFT']
+        
             
         fs_in, signal=read(wav_file)
         
-        if fs_in!=16000:
+        if fs_in!=FS:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
             
         signal=signal-np.mean(signal)
@@ -130,12 +147,15 @@ class AEspeech:
         nf=int(len(signal)/(TIME_SHIFT*FS))-1
         
         if nf>0:
-            mat=torch.zeros(nf,1,self.nmels,126)
+            mat=torch.zeros(nf,1,INTERP_NMELS,TIME_STEPS)
             j=0
             for k in range(nf):
                 try:
                     frame=signal[init:endi]
-                    imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=self.nmels, fmax=FS/2)
+                    imag=melspectrogram(frame, sr=FS, n_fft=NFFT, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
+                    imag=imag[np.where(imag[:,0]>0)]
+                    imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
+                    imag=np.abs(imag)
                     init=init+int(TIME_SHIFT*FS)
                     endi=endi+int(TIME_SHIFT*FS)
                     if np.min(np.min(imag))<=0:
@@ -152,7 +172,7 @@ class AEspeech:
         else:
             raise ValueError("WAV file is too short to compute the Mel spectrogram tensor")
         
-        return mat[0:j,:,:,:]
+        return mat[0:j,:,:,:],len(signal)
 
     
     def compute_cwt(self, wav_file,volta=1):
@@ -161,18 +181,19 @@ class AEspeech:
         :param wav_file: *.wav file with a sampling frequency of 16kHz
         :returns: Pytorch tensor (N, C, F, T). N: one file per method call C: number of channels (1),  F: number of bands, T: Number of Samples
         """
-        
+        FS=config['general']['FS']
         fs,signal=read(wav_file)
-        if fs!=16000:
+        if fs!=FS:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
-
-        SNIP_LEN=50 #Frame size in mS
+        
+        SNIP_LEN=config['wavelet']['SNIP_LEN']
+        NBF=config['wavelet']['NBF']
+        TIME_STEPS=config['wavelet']['TIME_STEPS']
+        OVRLP=config['wavelet']['OVRLP']
+        
         NFR=int(signal.shape[0]*1000/(fs*SNIP_LEN)) #Number of frames (determined based off length of window)
         FRAME_SIZE=int(signal.shape[0]/NFR) #Frame size in samples
-        OVRLP=0.5 #Overlap
         SHIFT=int(FRAME_SIZE*OVRLP) #Time shift
-        NBF=64 #Number of band frequencies
-        TIME_STEPS=512
         DIM=(TIME_STEPS,NBF)
 
         signal=signal-np.mean(signal)
@@ -180,7 +201,6 @@ class AEspeech:
 
         init=0
         endi=FRAME_SIZE
-
         wv_mat=torch.zeros((NFR,1,NBF,TIME_STEPS))
         freqs=np.zeros((NFR,NBF))
         
@@ -200,62 +220,73 @@ class AEspeech:
         else:
             return wv_mat
     
-    def show_spectrograms(self, spectrograms1,spectrograms2=None):
+    def show_spectrograms(self, sig_len, spectrograms1, spectrograms2=None):
         """
         Visualization of the computed tensor of Mel-scale spectrograms to be used as input for the autoencoders from a wav file
         :param spectrograms: tensor of spectrograms obtained from '''compute_spectrograms(wav-file)'''
         """
         mmax=2595*np.log10(1+8000/700)
+
         m=np.linspace(0,mmax,11)
 
         f=np.round(700*(10**(m/2595)-1))
         f=f[::-1]
         
+        FS=config['general']['FS']
+        INTERP_NMELS=config['mel_spec']['INTERP_NMELS']
+        TIME_STEPS=config['mel_spec']['TIME_STEPS']        
+        
+        if self.nb==0:
+            title="Broadband Speech Representation"
+            HOP=config['mel_spec']['BB_HOP']
+            NFFT=config['mel_spec']['BB_NFFT']
+        if self.nb==1:
+            title="Narrowband Speech Representation"
+            HOP=config['mel_spec']['NB_HOP']
+            NFFT=config['mel_spec']['NB_NFFT']
+
         if torch.is_tensor(spectrograms2):
             for k in range(spectrograms1.shape[0]):
                 fig,(ax1,ax2)=plt.subplots(ncols=2, figsize=(10,10))
-    
+
                 mat_curr=spectrograms1.data.numpy()[k,0,:,:]
                 ax1.imshow(np.flipud(mat_curr), cmap=plt.cm.viridis, vmax=mat_curr.max())
                 ax1.set_yticks(np.linspace(0,128,11))
                 ax1.set_yticklabels(map(str, f))
-                ax1.set_xticks(np.linspace(0,126,6))
-                ax1.set_xticklabels(map(str, np.linspace(0,500,6, dtype=np.int)))
+                ax1.set_xticks(np.linspace(0,spectrograms.shape[3],6))
+                ax1.set_xticklabels(map(str, np.linspace(0,sig_len*1000//(FS*TIME_STEPS),6, dtype=np.int)))
                 ax1.set_ylabel("Frequency (Hz)")
                 ax1.set_xlabel("Time (ms)")
 
                 to_curr=spectrograms2.data.numpy()[k,0,:,:]
                 ax2.imshow(np.flipud(to_curr), cmap=plt.cm.viridis, vmax=to_curr.max())
-                ax2.set_yticks(np.linspace(0,128,11))
+                ax2.set_yticks(np.linspace(0,NMELS,11))
                 ax2.set_yticklabels(map(str, f))
-                ax2.set_xticks(np.linspace(0,126,6))
-                ax2.set_xticklabels(map(str, np.linspace(0,500,6, dtype=np.int)))
+                ax2.set_xticks(np.linspace(0,spectrograms.shape[3],6))
+                ax2.set_xticklabels(map(str, np.linspace(0,sig_len*1000//(FS*TIME_STEPS),6, dtype=np.int)))
                 ax2.set_ylabel("Frequency (Hz)")
                 ax2.set_xlabel("Time (ms)")
                 plt.tight_layout()
                 plt.show()
-           
+
         else:
             spectrograms=spectrograms1
-            
+
             for k in range(spectrograms.shape[0]):
                 fig,  ax=plt.subplots(1, 1)
-                fig.set_size_inches(5, 5)
-    #             mat=spectrograms.data[k,0,:,:]
+                fig.set_size_inches(5,3)
                 mat=spectrograms.data.numpy()[k,0,:,:]
                 ax.imshow(np.flipud(mat), cmap=plt.cm.viridis, vmax=mat.max())
-                ax.set_yticks(np.linspace(0,128,11))
+                ax.set_title(title)
+                ax.set_yticks(np.linspace(0,NMELS,11))
                 ax.set_yticklabels(map(str, f))
-                ax.set_xticks(np.linspace(0,126,6))
-                ax.set_xticklabels(map(str, np.linspace(0,500,6, dtype=np.int)))
+                ax.set_xticks(np.linspace(0,spectrograms.shape[3],6))
+                ax.set_xticklabels(map(str, np.linspace(0,sig_len*1000//(FS*TIME_STEPS),6, dtype=np.int)))
                 ax.set_ylabel("Frequency (Hz)")
                 ax.set_xlabel("Time (ms)")
                 plt.tight_layout()
                 plt.show()
-            
-
-
-
+        
     def show_scalograms(self, time, coefs1, coefs2=None, freqs=None, hop=50, spectrum='amp', ax=None, cscale='linear', cmap='jet', clim=None,
                   cbar='vertical', cbarlabel=None,cbarkw=None,figsize=(10, 4.0),yaxis='frequency', xlim=None, ylim=None, yscale='log', 
                   coi=False,ylabel="Frequency", xlabel="Time (s)", title=None):
@@ -270,8 +301,8 @@ class AEspeech:
         f=np.round(700*(10**(m/2595)-1))
         f=f[::-1]
         
-        FS=16000
-        SNIP_LEN=500
+        FS=config['general']['FS']
+        SNIP_LEN=config['wavelet']['SNIP_LEN']
 
         for k in range(coefs1.shape[0]):
             if torch.is_tensor(coefs2):
@@ -285,7 +316,6 @@ class AEspeech:
                 axs=[ax]
 
             freq=freqs[k,:]
-            
             for ii,(coefs_curr,ax) in enumerate(zip(coefs,axs)):
                 coefs_curr=coefs_curr.data.numpy()
                 

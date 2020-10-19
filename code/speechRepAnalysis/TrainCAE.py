@@ -8,6 +8,8 @@ import sys
 from CAE import CAEn
 from wvCAE import wvCAEn
 import toolbox.traintestsplit as tts
+import json
+import argparse
 import pdb
 
 def standard(tensor, minval, maxval):
@@ -36,7 +38,7 @@ if __name__=="__main__":
     if len(sys.argv) != 3:
         print("python TrainCAE.py <bottleneck_sizes> <reps path>")
         sys.exit()
-    #rep_path: "./tedx_spanish_corpus/reps/'wvlt or spec'/train/"    
+    #rep_path: "./tedx_spanish_corpus/reps/'wvlt or spec/(bb or nb)'/train/"    
         
     if sys.argv[2][0] !='/':
         sys.argv[2] = '/'+sys.argv[2]
@@ -61,35 +63,50 @@ if __name__=="__main__":
         split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
         split.fileTrTstSplit()
 
+        
+    with open("config.json") as f:
+        data = f.read()
+    config = json.loads(data)
+    
+    FS=config['general']['FS']
+    NVAL=config['CAE']['NVAL']
+    NTRAIN=config['CAE']['NTRAIN']
+    N_EPOCHS=config['CAE']['N_EPOCHS']
+    LR=config['CAE']['LR']
+    NUM_W=config['CAE']['NUM_W']
+    BATCH_SIZE=config['CAE']['BATCH_SIZE']
+        
     PATH_TRAIN=path_rep+"/train/"
     PATH_TEST=path_rep+"/test/"
-    BATCH_SIZE=2
-    NUM_W=0
     BOTTLE_SIZE=int(sys.argv[1])
-    LR=0.01
-    N_EPOCHS = 25
-    #SCALERS = pd.read_csv("scales.csv")
-    #MIN_SCALER= float(SCALERS['Min '+rep_typ+' Scale']) #MIN value of total energy.
-#MAX_SCALER= float(SCALERS['Max '+rep_typ+' Scale'])  #MAX value of total energy.
-    MIN_SCALER=-41.0749397
-    MAX_SCALER=6.720702
-    NTRAIN=6000
-    NVAL=500
-    FS=16000
+    nb=config['mel_spec']['nb']
+    
+# #     SCALERS = pd.read_csv("scales.csv")
+#     MIN_SCALER= float(SCALERS['Min '+rep_typ+' Scale']) #MIN value of total energy.
+#     MAX_SCALER= float(SCALERS['Max '+rep_typ+' Scale'])  #MAX value of total energy.
 
+    MIN_SCALER=-41.0749397277832
+    MAX_SCALER=6.720702171325684
+    
+    
     train=SpecDataset(PATH_TRAIN)
     test=SpecDataset(PATH_TEST)
-    save_path = PATH+"/pts/"+rep_typ+'/'
-    if not os.path.isdir(save_path):
-        os.mkdir(save_path)
-    
     train_loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
     test_loader = torch.utils.data.DataLoader(test, batch_size=BATCH_SIZE, drop_last=True, num_workers=NUM_W)
       
     if rep_typ=='spec':
         model=CAEn(BOTTLE_SIZE)
+        if nb==1:
+            save_path = PATH+"/pts/"+rep_typ+'/nb/'
+        elif nb==0:
+            save_path = PATH+"/pts/"+rep_typ+'/bb/'
     elif rep_typ=='wvlt':
         model=wvCAEn(BOTTLE_SIZE)
+        save_path = PATH+"/pts/"+rep_typ+'/'
+    
+    if not os.path.isdir(save_path):
+        os.mkdir(save_path)
+        
     epochs=np.arange(N_EPOCHS)
     optimizer = torch.optim.Adam(model.parameters(), lr = LR)
             
@@ -203,16 +220,16 @@ if __name__=="__main__":
             print('Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(
             valid_loss_min,
             valid_loss))
-            odel.load_state_dict(model.state_dict())
+            model.load_state_dict(model.state_dict())
             torch.save({'model': model.state_dict(),
                     'epoch': epoch,
                     'optimizer': optimizer.state_dict(),
-                    'learning_rate': lr}, save_path+'/'+str(BOTTLE_SIZE)+'_CAE.pt')
+                    'learning_rate': LR}, save_path+'/'+str(BOTTLE_SIZE)+'_CAE.pt')
             valid_loss_min = valid_loss
         if epoch==0:
-            f=open(save_path+'/loss_'+str(BOTTLE_SIZE)+'_CAE.csv', "a")
-        else:
             f=open(save_path+'/loss_'+str(BOTTLE_SIZE)+'_CAE.csv', "w")
+        else:
+            f=open(save_path+'/loss_'+str(BOTTLE_SIZE)+'_CAE.csv', "a")
         f.write(str(train_loss)+", "+str(valid_loss)+"\n")
         f.close()
 

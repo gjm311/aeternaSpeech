@@ -8,6 +8,8 @@ from scipy.io.wavfile import read
 import scipy
 import numpy as np
 from AEspeech import AEspeech
+import json
+import argparse
 
 from librosa.feature import melspectrogram
 
@@ -34,22 +36,28 @@ if __name__ == "__main__":
     
     mod=sys.argv[1]
     rep=sys.argv[2]
-#     path_audio=PATH+sys.argv[3]
-#     pd_path=path_audio+'pd/'
-#     hc_path=path_audio+'hc/'
     
-
+    #LOAD CONFIG.JSON INFO
+    with open("config.json") as f:
+        data = f.read()
+    config = json.loads(data)
+    time_steps=config['general']['FS']
+    unit=config['general']['UNITS']
+    nb=config['mel_spec']['nb']
+    
     save_path=PATH+'/pts/'+'/reconErrs/'
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
-    save_path=save_path+mod+'_'+rep+'.pickle'
-
-    unit=256
     if rep=='wvlt':
-        time_steps=512
+        save_path=save_path+mod+'_'+rep+'.pickle'
+        time_steps=config['wavelet']['TIME_STEPS']
     else:
-        time_steps=126
+        if nb==1:
+            save_path=save_path+mod+'_'+rep+'_nb.pickle'
+        else:
+            save_path=save_path+mod+'_'+rep+'_bb.pickle'
+        time_steps=config['mel_spec']['TIME_STEPS']        
     
     data={spk:{'means':[], 'stds':[]} for spk in ['pd','hc']}
     utters= os.listdir(PATH+sys.argv[3])
@@ -72,7 +80,7 @@ if __name__ == "__main__":
 
                 # for mod in models:
                 aespeech=AEspeech(model=mod,units=unit,rep=rep)
-                if rep=='spec':
+                if rep=='spec':                  
                     mat=aespeech.compute_spectrograms(wav_file)
                 if rep=='wvlt':
                     mat,freqs=aespeech.compute_cwt(wav_file)

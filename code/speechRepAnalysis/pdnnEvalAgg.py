@@ -26,11 +26,11 @@ config = json.loads(info)
 UNITS=config['general']['UNITS']
 UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
 MODELS=["CAE","RAE","ALL"]
-REPS=['spec','wvlt']
+REPS=['broadband','narrowband','wvlt']
 
 
 
-def saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ):
+def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
     global UNITS    
     # load the pretrained model with 256 units and get temp./freq. rep (spec or wvlt)
     aespeech=AEspeech(model=model,units=UNITS,rep=rep) 
@@ -41,28 +41,23 @@ def saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ):
     feat_vecs=aespeech.compute_dynamic_features(wav_path)
     #     df1, df2=aespeech.compute_global_features(wav_path)
     
-    with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
+    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
         pickle.dump(feat_vecs, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
     return feat_vecs
             
 
-def getFeats(model,units,nb,rep,wav_path,utter,spk_typ):
+def getFeats(model,units,rep,wav_path,utter,spk_typ):
     global PATH
     save_path=PATH+"/"+"pdSpanish/feats/"+utter+"/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-        
-    if rep=='spec' and nb==1:
-        band_typ='nb'
-    elif rep=='spec' and nb==0:
-        band_typ='bb'
-        
-    if os.path.isfile(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle'):
-        with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
+
+    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle'):
+        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
             feat_vecs = pickle.load(handle)
     else:
-        feat_vecs=saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ)
+        feat_vecs=saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ)
     
     return feat_vecs
         
@@ -96,7 +91,7 @@ if __name__=="__main__":
 
     PATH=os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv)!=4:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/<UTTER>/'
     
@@ -104,13 +99,13 @@ if __name__=="__main__":
     if sys.argv[1] in MODELS:
         mod=sys.argv[1]
     else:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()
     
     if sys.argv[2] in REPS:
         rep=sys.argv[2]
     else:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()    
         
     if sys.argv[3][0] !='/':
@@ -129,14 +124,9 @@ if __name__=="__main__":
 
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
 
-    if rep=='spec':
-        if nb==1:
-            band_typ='nb'
-            NBF=config['mel_spec']['INTERP_NMELS']
-        elif nb==0:
-            band_typ='bb'
-            NBF=config['mel_spec']['INTERP_NMELS']
-    else:
+    if rep=='broadband' or rep=='narrowband':
+        NBF=config['mel_spec']['INTERP_NMELS']
+    elif rep=='wvlt':
         NBF=config['wavelet']['NBF']
 
         
@@ -150,7 +140,7 @@ if __name__=="__main__":
         
     #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
     #(see pdnn.py) and classify one by one if PD or HC.
-    lr_score_opt=0
+#     lr_score_opt=0
 #     lr_scores=pd.DataFrame(columns=LRs,index=np.arange(1))
 #     for lrItr,LR in enumerate(LRs):
 
@@ -169,8 +159,8 @@ if __name__=="__main__":
         num_spks=len(spks)
         num_pd=len(pdNames)
         num_hc=len(hcNames)
-        pdFeats=getFeats(mod,UNITS,rep,nb,pd_path,utter,'pd')
-        hcFeats=getFeats(mod,UNITS,rep,nb,hc_path,utter,'hc')
+        pdFeats=getFeats(mod,UNITS,rep,pd_path,utter,'pd')
+        hcFeats=getFeats(mod,UNITS,rep,hc_path,utter,'hc')
         pdAll=np.unique(pdFeats['wav_file'])
         hcAll=np.unique(hcFeats['wav_file'])
                 
@@ -526,12 +516,9 @@ if __name__=="__main__":
 #             lr_score_opt=lr_score
 #         lr_scores.iloc[0][LRs[lrItr]]=lr_score
 #         lr_scores.to_csv(save_path+mod+'_'+rep+"lrResults.csv")
-    if rep=='spec':
-        trainResults.to_pickle(save_path+mod+'_'+rep+"_"+band_typ+"_aggTrainResults.pkl")
-        testResults.to_pickle(save_path+mod+'_'+rep+"_"+band_typ+"_aggTestResults.pkl")
-    elif rep=='wvlt':
-        trainResults.to_pickle(save_path+mod+'_'+rep+"_aggTrainResults.pkl")
-        testResults.to_pickle(save_path+mod+'_'+rep+"_aggTestResults.pkl")
+
+    trainResults.to_pickle(save_path+mod+'_'+rep+"_aggTrainResults.pkl")
+    testResults.to_pickle(save_path+mod+'_'+rep+"_aggTestResults.pkl")
 
 
 

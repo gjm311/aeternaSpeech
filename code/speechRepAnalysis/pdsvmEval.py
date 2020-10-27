@@ -33,11 +33,11 @@ config = json.loads(data)
 UNITS=config['general']['UNITS']
 UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
 MODELS=["CAE","RAE","ALL"]
-REPS=['spec','wvlt']
+REPS=['broadband','narrowband','wvlt']
 # UTTERS=['pataka']
 
 
-def saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ):
+def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
     global UNITS    
     # load the pretrained model with 256 units and get temp./freq. rep (spec or wvlt)
     aespeech=AEspeech(model=model,units=UNITS,rep=rep) 
@@ -48,28 +48,23 @@ def saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ):
     feat_vecs=aespeech.compute_dynamic_features(wav_path)
     #     df1, df2=aespeech.compute_global_features(wav_path)
     
-    with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
+    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
         pickle.dump(feat_vecs, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
     return feat_vecs
             
 
-def getFeats(model,units,nb,rep,wav_path,utter,spk_typ):
+def getFeats(model,units,rep,wav_path,utter,spk_typ):
     global PATH
     save_path=PATH+"/"+"pdSpanish/feats/"+utter+"/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-        
-    if rep=='spec' and nb==1:
-        band_typ='nb'
-    elif rep=='spec' and nb==0:
-        band_typ='bb'
-        
-    if os.path.isfile(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle'):
-        with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
+
+    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle'):
+        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
             feat_vecs = pickle.load(handle)
     else:
-        feat_vecs=saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ)
+        feat_vecs=saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ)
     
     return feat_vecs
        
@@ -113,7 +108,17 @@ if __name__=="__main__":
     if rep=='wvlt':
         num_feats=config['wavelet']['NBF']+UNITS
     else:
-        num_feats=config['mel_spectrogram']['NMELS']+UNITS
+        num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
+        if nb==1:
+            band_typ='narrowband'
+            if 'narrowband' not in path_rep:
+                print("Input file path and config.json are not aligned. Please reconfigure and try again...")
+                sys.exit()
+        elif nb==0:
+            band_typ='broadband'
+            if 'broadband' not in path_rep:
+                print("Input file path and config.json are not aligned. Please reconfigure and try again...")
+                sys.exit()
     
     results=pd.DataFrame({utter:{'train_acc':0,'test_acc':0,'bin_class':{itr:{} for itr in range(o_itrs)},'class_report':{itr:{} for itr in range(o_itrs)}} for utter in UTTERS})
     
@@ -257,10 +262,6 @@ if __name__=="__main__":
 #                 pdb.set_trace()
         results.to_pickle(save_path+model+'_'+rep+"Results.pkl")
     
-        if rep=='spec':
-            results.to_pickle(save_path+model+'_'+rep+"_"+band_typ+"_results.pkl")
-        elif rep=='wvlt':
-            results.to_pickle(save_path+model+'_'+rep+"_results.pkl")
     
 
 

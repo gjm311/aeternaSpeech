@@ -32,11 +32,11 @@ config = json.loads(data)
 UNITS=config['general']['UNITS']
 UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
 MODELS=["CAE","RAE","ALL"]
-REPS=['spec','wvlt']
+REPS=['broadband','narrowband','wvlt']
 # UTTERS=['pataka']
 
 
-def saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ):
+def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
     global UNITS    
     # load the pretrained model with 256 units and get temp./freq. rep (spec or wvlt)
     aespeech=AEspeech(model=model,units=UNITS,rep=rep) 
@@ -47,28 +47,23 @@ def saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ):
     feat_vecs=aespeech.compute_dynamic_features(wav_path)
     #     df1, df2=aespeech.compute_global_features(wav_path)
     
-    with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
+    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
         pickle.dump(feat_vecs, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
     return feat_vecs
             
 
-def getFeats(model,units,nb,rep,wav_path,utter,spk_typ):
+def getFeats(model,units,rep,wav_path,utter,spk_typ):
     global PATH
     save_path=PATH+"/"+"pdSpanish/feats/"+utter+"/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-        
-    if rep=='spec' and nb==1:
-        band_typ='nb'
-    elif rep=='spec' and nb==0:
-        band_typ='bb'
-        
-    if os.path.isfile(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle'):
-        with open(save_path+'/'+band_typ+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
+
+    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle'):
+        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
             feat_vecs = pickle.load(handle)
     else:
-        feat_vecs=saveFeats(model,units,rep,band_typ,wav_path,utter,save_path, spk_typ)
+        feat_vecs=saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ)
     
     return feat_vecs
        
@@ -77,7 +72,7 @@ def getFeats(model,units,nb,rep,wav_path,utter,spk_typ):
 if __name__=="__main__":
 
     if len(sys.argv)!=4:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'narrowband' or 'broadband' or 'wvlt'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/'    
     
@@ -108,17 +103,11 @@ if __name__=="__main__":
 #     hc_mfdas=mfdas[50:]
     
     
-    nb=config['mel_spec']['nb']
     if rep=='wvlt':
         num_feats=config['wavelet']['NBF']+UNITS
     else:
-        if nb==1:
-            band_typ='nb'
-            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
-        elif nb==0:
-            band_typ='bb'
-            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
-    
+        num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
+                
     data={utter:{} for utter in UTTERS}
     
     num_utters=len(UTTERS)
@@ -136,8 +125,8 @@ if __name__=="__main__":
         num_spks=len(spks)
         num_pd=len(pdNames)
         num_hc=len(hcNames)
-        pdFeats=getFeats(model,UNITS,rep,nb,pd_path,utter,'pd')
-        hcFeats=getFeats(model,UNITS,rep,nb,hc_path,utter,'hc')
+        pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
+        hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
         pdAll=np.unique(pdFeats['wav_file'])
         hcAll=np.unique(hcFeats['wav_file'])
         pdIds=np.arange(50)
@@ -250,10 +239,7 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
 
-    if rep=='spec':
-        results.to_pickle(save_path+model+'_'+rep+"_"+band_typ+"_aggResults.pkl")
-    elif rep=='wvlt':
-        results.to_pickle(save_path+model+'_'+rep+"_aggResults.pkl")
+    results.to_pickle(save_path+model+'_'+rep+"_aggResults.pkl")
 
 
 

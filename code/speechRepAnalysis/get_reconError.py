@@ -20,7 +20,7 @@ import toolbox.traintestsplit as tts
 if __name__ == "__main__":
 
     if len(sys.argv)!=4:
-        print("python get_reconError.py <CAE or RAE> <spec or wvlt> <path_speech>")
+        print("python get_reconError.py <CAE or RAE> <narrowband or broadband or wvlt> <path_speech>")
         sys.exit()
     
         
@@ -43,20 +43,16 @@ if __name__ == "__main__":
     config = json.loads(data)
     time_steps=config['general']['FS']
     unit=config['general']['UNITS']
-    nb=config['mel_spec']['nb']
     
     save_path=PATH+'/pts/'+'/reconErrs/'
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
+    save_path=save_path+mod+'_'+rep+'.pickle'
+    
     if rep=='wvlt':
-        save_path=save_path+mod+'_'+rep+'.pickle'
         time_steps=config['wavelet']['TIME_STEPS']
     else:
-        if nb==1:
-            save_path=save_path+mod+'_'+rep+'_nb.pickle'
-        else:
-            save_path=save_path+mod+'_'+rep+'_bb.pickle'
         time_steps=config['mel_spec']['TIME_STEPS']        
     
     data={spk:{'means':[], 'stds':[]} for spk in ['pd','hc']}
@@ -80,7 +76,7 @@ if __name__ == "__main__":
 
                 # for mod in models:
                 aespeech=AEspeech(model=mod,units=unit,rep=rep)
-                if rep=='spec':                  
+                if rep=='broadband' or rep=='narrrowband':                  
                     mat=aespeech.compute_spectrograms(wav_file)
                 if rep=='wvlt':
                     mat,freqs=aespeech.compute_cwt(wav_file)
@@ -88,9 +84,7 @@ if __name__ == "__main__":
                 if torch.cuda.is_available():
                     mat=mat.cuda()
                 to,bot=aespeech.AE.forward(mat)
-                
-                if rep=='wvlt':
-                    to=aespeech.standard(to)
+                to=aespeech.destandard(to)
                     
                 data_curr[ii,:]=np.mean(np.mean((mat[:,0,:,:].cpu().detach().numpy()-to[:,0,:,:].cpu().detach().numpy())**2,axis=1),axis=0)
                 data_curr[ii,:]=np.std(np.std((mat[:,0,:,:].cpu().detach().numpy()-to[:,0,:,:].cpu().detach().numpy())**2,axis=1),axis=0)

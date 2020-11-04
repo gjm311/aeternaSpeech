@@ -146,20 +146,7 @@ class trainTestSplit:
             trNames=info_dict['trNames']
             tstNames=info_dict['tstNames']
             return trNames,tstNames
-
-        
-#     def trTstReset(self): 
-#         if not os.path.exists(self.trTstPath):
-#             print("No train/test assignments exist... try trTstAssign()")
-#         else:
-#             os.unlink(self.trTst_path)
-            
-
-#     def fetchIds(self):
-#         if not os.path.exists(self.trTstPath):
-#             print("No train/test assignments exist... try trTstAssign()")
-#         else:
-#             df=pd.read_csv(self.trTstPath)
-#             trIds=df['trIds'].values.tolist()
-#             tstIds=df['tstIds'].values.tolist()
-#             return trIds,tstIds
+    
+    
+    
+    

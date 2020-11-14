@@ -73,20 +73,20 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
 if __name__=="__main__":
 
     if len(sys.argv)!=4:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python pdsvmEval.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/'    
     
     if sys.argv[1] in MODELS:
         model=sys.argv[1]
     else:
-        print("python pdsvmTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python pdsvmEval.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()
     
     if sys.argv[2] in REPS:
         rep=sys.argv[2]
     else:
-        print("python pdsvmTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python pdsvmEval.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()    
           
     if sys.argv[3][0] !='/':
@@ -102,26 +102,15 @@ if __name__=="__main__":
 #     mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
 #     pd_mfdas=mfdas[0:50]
 #     hc_mfdas=mfdas[50:]
-    
-   
-    o_itrs=config['svm']['iterations']
+
     if rep=='wvlt':
         num_feats=config['wavelet']['NBF']+UNITS
     else:
         num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
-        if nb==1:
-            band_typ='narrowband'
-            if 'narrowband' not in path_rep:
-                print("Input file path and config.json are not aligned. Please reconfigure and try again...")
-                sys.exit()
-        elif nb==0:
-            band_typ='broadband'
-            if 'broadband' not in path_rep:
-                print("Input file path and config.json are not aligned. Please reconfigure and try again...")
-                sys.exit()
     
+    o_itrs=config['svm']['iterations']
     results=pd.DataFrame({utter:{'train_acc':0,'test_acc':0,'bin_class':{itr:{} for itr in range(o_itrs)},'class_report':{itr:{} for itr in range(o_itrs)}} for utter in UTTERS})
-    
+ 
     #Run train/test for each utterance case separately.
     for uIdx,utter in enumerate(UTTERS):
         curr_best=0
@@ -137,8 +126,8 @@ if __name__=="__main__":
         num_hc=len(hcNames)
         
         #get features
-        pdFeats=getFeats(model,UNITS,rep,nb,pd_path,utter,'pd')
-        hcFeats=getFeats(model,UNITS,rep,nb,hc_path,utter,'hc')
+        pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
+        hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
         pdAll=np.unique(pdFeats['wav_file'])
         hcAll=np.unique(hcFeats['wav_file'])
         pdIds=np.arange(50)
@@ -232,8 +221,9 @@ if __name__=="__main__":
 
                 xTest=np.concatenate((pdTest,hcTest),axis=0)
                 xTest=(xTest-np.min(xTest))/(np.max(xTest)-np.min(xTest))
-                pdYTest=np.ones((pdTest.shape[0])).T
-                hcYTest=np.zeros((pdTest.shape[0])).T
+
+                pdYTest=np.ones((pdTest.shape[1])).T
+                hcYTest=np.zeros((pdTest.shape[1])).T
                 yTest=np.concatenate((pdYTest,hcYTest),axis=0)
 
                 param_grid = [
@@ -259,7 +249,7 @@ if __name__=="__main__":
                 for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
                     results[utter]['bin_class'][o_itr][pdId]=bin_class[cpi]     
                     results[utter]['bin_class'][o_itr][hcId]=bin_class[cpi+int(num_pdHc_tests/2)]
-#                 pdb.set_trace()
+                pdb.set_trace()
         results.to_pickle(save_path+model+'_'+rep+"Results.pkl")
     
     

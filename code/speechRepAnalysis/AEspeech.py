@@ -31,10 +31,11 @@ warnings.filterwarnings("ignore", message="WavFileWarning: Chunk (non-data) not 
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy.stats as st
+from phonetGM2 import Phonet
 import pdb
 
 with open("config.json") as f:
-        data = f.read()
+    data = f.read()
 config = json.loads(data)
 
 
@@ -50,6 +51,69 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
     b, a = butter_bandpass(lowcut, highcut, fs, order=order)
     y = lfilter(b, a, data)
     return y
+
+
+def get_plosive_audio_frames(audio,snip_len,pkl_path):
+    phon=Phonet()    
+    audio_len=len(audio)
+    
+    if os.path.isfile(pkl_path):
+        wav_df=pd.read_pickle(pkl_path)
+    else:
+        wav_df=phon.get_phon_wav(audio_file=audio, phonclass="all", feat_file=pkl_path)
+    
+    #filter out consecutive phoneme occurrences.
+    wav_df['phoneme_hash']=wav_df.phoneme.map(hash)
+    unique_df=wav_df.loc[wav_df['phoneme_hash'].diff() != 0]
+    
+    num_frames=unique_df['phoneme'].value_counts().filter(['p','t','k']).sum()
+    frames=np.zeros((num_frames,snip_len))
+    plosive_starts=unique_df['time'][unique_df.phoneme.isin(['p','t','k'])].to_numpy()*16000/1000
+
+    for itr,start_time in enumerate(plosive_starts):
+        start_time=int(start_time)
+        if start_time>(audio_len-snip_len):
+            new_start=snip_len-(audio_len-start_time)
+            frames[itr,:]=audio[new_start:]
+        else:
+            frames[itr,:]=audio[start_time:start_time+snip_len]
+    
+    return frames
+
+
+def get_frames(audio, audio_name, snip_len, phon_book_path, pkl_path):
+    snip_len=int(snip_len*16000/1000)
+    phon_book_pkl=phon_book_path+'/phon_book.pkl'
+    pkl_path=pkl_path+'/'+audio_name+'.pkl' 
+    
+    if os.path.isfile(phon_book_pkl):
+        phon_book=pd.read_pickle(phon_book_pkl)
+        if audio_name in phon_book['audio_names'].to_numpy():
+            try:
+                with open(phon_book_path+'/'+audio_name+'.npy', 'rb') as f:
+                    frames=np.load(f)
+            except:
+                frames=get_plosive_audio_frames(audio,snip_len,pkl_path)
+                with open(phon_book_path+'/'+audio_name+'.npy', 'wb') as f:
+                    np.save(f, frames)
+                    
+            return frames            
+        else:
+            phon_dic={'audio_names':audio_name}
+            phon_book=phon_book.append(pd.Series(phon_dic,name=phon_book.index.max()+1))
+            phon_book.to_pickle(phon_book_pkl)
+            
+            frames=get_plosive_audio_frames(audio,snip_len,pkl_path)
+            with open(phon_book_path+'/'+audio_name+'.npy', 'wb') as f:
+                np.save(f, frames)
+            return frames            
+    else:
+        phon_book=pd.DataFrame([audio_name],columns=['audio_names'])
+        phon_book.to_pickle(phon_book_pkl)
+        frames=get_plosive_audio_frames(audio,snip_len,pkl_path)
+        with open(phon_book_path+'/'+audio_name+'.npy', 'wb') as f:
+            np.save(f, frames)
+        return frames  
 
 
 class AEspeech:
@@ -124,14 +188,14 @@ class AEspeech:
    
 
     
-    def compute_spectrograms(self, wav_file, volta=0):
+    def compute_spectrograms(self, wav_file, plosives_only=1, volta=0):
         """
         Compute the tensor of Mel-scale spectrograms to be used as input for the autoencoders from a wav file
         :param wav_file: *.wav file with a sampling frequency of 16kHz
         :returns: Pytorch tensor (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of Mel frequencies (128), T: time steps (126)
         """        
         FS=config['general']['FS']
-        FRAME_SIZE=config['mel_spec']['FRAME_SIZE']
+        FRAME_SIZE=config['mel_spec']['FRAME_SIZE'] #in seconds
         TIME_STEPS=config['mel_spec']['TIME_STEPS']
         INTERP_NMELS=config['mel_spec']['INTERP_NMELS']
         
@@ -140,11 +204,18 @@ class AEspeech:
         if fs_in!=FS:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
             
-            
-        FRAME_SIZE=(FS*FRAME_SIZE)/sig_len
-        TIME_SHIFT=FRAME_SIZE/2
+        PATH_FRAMES='/'.join(wav_file.split('/')[:-1])+'/../frames/spec/'
+        PATH_PHON_PROBS='/'.join(wav_file.split('/')[:-1])+'/../phonet_probs/' 
+        if not os.path.exists(PATH_FRAMES):
+            os.makedirs(PATH_FRAMES)
+        if not os.path.exists(PATH_PHON_PROBS):
+            os.makedirs(PATH_PHON_PROBS)
         
+        FRAME_SIZE=(FS*FRAME_SIZE) #as percent of signal length
+        TIME_SHIFT=FRAME_SIZE/2 #half of the framesize
+        SNIP_LEN=config['mel_spec']['SNIP_LEN']
         NFFT=config['mel_spec']['NFFT']
+        
         if self.rep=='broadband':
             HOP=int(FS*config['mel_spec']['BB_HOP'])#3ms hop (48 SAMPLES)
             WIN_LEN=int(FS*config['mel_spec']['BB_TIME_WINDOW'])#5ms time window (60 SAMPLES)
@@ -158,42 +229,43 @@ class AEspeech:
         
         signal=signal-np.mean(signal)
         signal=signal/np.max(np.abs(signal))
-        init=0
-        endi=int(FRAME_SIZE*sig_len)
-        nf=int(len(signal)/(TIME_SHIFT*sig_len))-1
         
-        if nf>0:
-            mat=torch.zeros(nf,1,INTERP_NMELS,TIME_STEPS)
-            j=0
-            for k in range(nf):
+        if plosives_only==1:
+            frames=get_frames(signal, audio_name=wav_file.split('/')[-1].replace(".wav", ""), snip_len=SNIP_LEN, phon_book_path=PATH_FRAMES, pkl_path=PATH_PHON_PROBS)
+            NFR=len(frames)
+        if plosives_only==0 or NFR==0:
+            init=0
+            endi=int(FRAME_SIZE)
+            NFR=int(sig_len/TIME_SHIFT)-1
+            frames=np.zeros((NFR,endi))
+            for k in range(NFR):
                 try:
-                    frame=signal[init:endi]
-                    imag=melspectrogram(frame, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
-                    imag=imag[np.where(imag[:,0]>0)]
-                    imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
-                    imag=np.abs(imag)
-                    init=init+int(TIME_SHIFT*FS)
-                    endi=endi+int(TIME_SHIFT*FS)
-                    if np.min(np.min(imag))<=0:
-                        warnings.warn("There is Inf values in the Mel spectrogram")
-                        continue
-                    imag=np.log(imag, dtype=np.float32)
-                    imagt=torch.from_numpy(imag)
-                    mat[j,:,:,:]=imagt
-                    j+=1
+                    frames[k,:]=signal[init:endi]
                 except:
-                    init=init+int(TIME_SHIFT*sig_len)
-                    endi=endi+int(TIME_SHIFT*sig_len)
-                    warnings.warn("There is non valid values in the wav file")
-        else:
-            raise ValueError("WAV file is too short to compute the Mel spectrogram tensor")
+                    frames[k,:]=np.append(signal[init:],np.zeros(endi-len(signal)))
+                init=init+int(TIME_SHIFT)
+                endi=endi+int(TIME_SHIFT)
+        
+        mat=torch.zeros(NFR,1,INTERP_NMELS,TIME_STEPS)
+
+        for k,frame in enumerate(frames):
+            imag=melspectrogram(frame, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
+            imag=imag[np.where(imag[:,0]>0)]
+            imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
+            imag=np.abs(imag)
+            if np.min(np.min(imag))<=0:
+                warnings.warn("There is Inf values in the Mel spectrogram")
+                continue
+            imag=np.log(imag, dtype=np.float32)
+            imagt=torch.from_numpy(imag)
+            mat[k,:,:,:]=imagt
         
         if volta==1:
-            return mat[0:j,:,:,:],sig_len
+            return mat,sig_len
         else:
-            return mat[0:j,:,:,:]
+            return mat
     
-    def compute_cwt(self, wav_file,volta=1):
+    def compute_cwt(self, wav_file,plosives_only=1,volta=1):
         """
         Compute the continuous wavelet transform to be used as input for the autoencoders from a wav file
         :param wav_file: *.wav file with a sampling frequency of 16kHz
@@ -203,36 +275,52 @@ class AEspeech:
         fs,signal=read(wav_file)
         if fs!=FS:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
-        
+            
+        PATH_FRAMES='/'.join(wav_file.split('/')[:-1])+'/../frames/wvlt/'
+        PATH_PHON_PROBS='/'.join(wav_file.split('/')[:-1])+'/../phonet_probs/'      
+        if not os.path.exists(PATH_FRAMES):
+            os.makedirs(PATH_FRAMES)
+        if not os.path.exists(PATH_PHON_PROBS):
+            os.makedirs(PATH_PHON_PROBS)
+            
         SNIP_LEN=config['wavelet']['SNIP_LEN']
         NBF=config['wavelet']['NBF']
         TIME_STEPS=config['wavelet']['TIME_STEPS']
         OVRLP=config['wavelet']['OVRLP']
-        
-        NFR=int(signal.shape[0]*1000/(fs*SNIP_LEN)) #Number of frames (determined based off length of window)
+        NFR=int(signal.shape[0]*1000/(FS*SNIP_LEN))
         FRAME_SIZE=int(signal.shape[0]/NFR) #Frame size in samples
         SHIFT=int(FRAME_SIZE*OVRLP) #Time shift
         DIM=(TIME_STEPS,NBF)
-
+        
+        if plosives_only==1:
+            frames=get_frames(signal, audio_name=wav_file.split('/')[-1].replace(".wav", ""), snip_len=SNIP_LEN, phon_book_path=PATH_FRAMES,pkl_path=PATH_PHON_PROBS)
+            NFR=frames.shape[0]
+            print(NFR)
+        if plosives_only==0 or NFR==0:
+            NFR=int(signal.shape[0]*1000/(FS*SNIP_LEN))
+            init=0
+            endi=FRAME_SIZE
+            frames=np.zeros((NFR,endi))
+            for k in range(NFR):
+                try:
+                    frames[k,:]=signal[init:endi]
+                except:
+                    frames[k,:]=np.concatenate((signal[init:],np.zeros(endi-len(signal))))
+                init=init+int(SHIFT)
+                endi=endi+int(SHIFT)
+        
         signal=signal-np.mean(signal)
         signal=signal/np.max(np.abs(signal))
 
-        init=0
-        endi=FRAME_SIZE
         wv_mat=torch.zeros((NFR,1,NBF,TIME_STEPS))
         freqs=np.zeros((NFR,NBF))
         
-        for k in range(NFR):    
-            frame=signal[init:endi]                         
-            init=init+int(SHIFT)
-            endi=endi+int(SHIFT)
+        for k,frame in enumerate(frames):
             fpsi,freqs[k,:] = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
-
-            bicubic_img = cv2.resize(np.real(fpsi),DIM,interpolation=cv2.INTER_CUBIC)
-            
+            bicubic_img = cv2.resize(np.real(fpsi),DIM,interpolation=cv2.INTER_CUBIC)            
             fpsit=torch.from_numpy(bicubic_img)
             wv_mat[k,0,:,:]=fpsit
-        
+
         if volta==1:
             return wv_mat,freqs
         else:
@@ -267,16 +355,17 @@ class AEspeech:
 
         if torch.is_tensor(spectrograms2):
             for k in range(spectrograms1.shape[0]):
-                fig,(ax1,ax2)=plt.subplots(ncols=2, figsize=(10,10))
+                fig,(ax1,ax2)=plt.subplots(ncols=2, figsize=(8,8))
 
                 mat_curr=spectrograms1.data.numpy()[k,0,:,:]
                 ax1.imshow(np.flipud(mat_curr), cmap=plt.cm.viridis, vmax=mat_curr.max())
-                ax1.set_yticks(np.linspace(0,128,11))
+                ax1.set_yticks(np.linspace(0,INTERP_NMELS,11))
                 ax1.set_yticklabels(map(str, f))
                 ax1.set_xticks(np.linspace(0,spectrograms1.shape[3],6))
                 ax1.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
                 ax1.set_ylabel("Frequency (Hz)")
                 ax1.set_xlabel("Time (ms)")
+                ax1.set_title(self.rep+" mel-spectrogram")
 
                 to_curr=spectrograms2.data.numpy()[k,0,:,:]
                 ax2.imshow(np.flipud(to_curr), cmap=plt.cm.viridis, vmax=to_curr.max())
@@ -286,6 +375,7 @@ class AEspeech:
                 ax2.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
                 ax2.set_ylabel("Frequency (Hz)")
                 ax2.set_xlabel("Time (ms)")
+                ax2.set_title("reconstructed "+self.rep+" mel-spectrogram")
                 plt.tight_layout()
                 plt.show()
 
@@ -453,7 +543,7 @@ class AEspeech:
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (nf, h) or numpy array (nf, h) with the extracted features. nf: number of frames, size of the bottleneck space
         """
-        if self.rep=='spec':
+        if self.rep=='narrowband' or self.rep=='broadband':
             mat=self.compute_spectrograms(wav_file)
             mat=self.standard(mat)
         else:
@@ -478,7 +568,7 @@ class AEspeech:
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (nf, 128) or numpy array (nf, 128) with the extracted features. nf: number of frames
         """
-        if self.rep=='spec':
+        if self.rep=='narrowband' or self.rep=='broadband':
             mat=self.compute_spectrograms(wav_file)
             mat=self.standard(mat)
         else:

@@ -101,13 +101,13 @@ if __name__=="__main__":
     if sys.argv[1] in MODELS:
         mod=sys.argv[1]
     else:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnEval.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()
     
     if sys.argv[2] in REPS:
         rep=sys.argv[2]
     else:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnEval.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()    
         
     if sys.argv[3][0] !='/':
@@ -170,7 +170,7 @@ if __name__=="__main__":
             pdFeats=getFeats(mod,UNITS,rep,pd_path,utter,'pd')
             hcFeats=getFeats(mod,UNITS,rep,hc_path,utter,'hc')
             
-            #RESET model
+            #INITIATE OR RESET model
             model=pdn(UNITS+NBF)
     
             criterion=nn.BCELoss()
@@ -207,7 +207,7 @@ if __name__=="__main__":
                 hcTest=np.concatenate((hcBns,hcErrs),axis=1)
                 testDict['hc'][hcItr]=hcTest
 
-            #Separate nv Validation speakers and get features
+            #separate validation speakers and get features
             notTestSpksPD=[spk for spk in pds if spk not in pdCurrs]
             notTestSpksHC=[spk for spk in hcs if spk not in hcCurrs]
             validsPD=[notTestSpksPD[idx] for idx in random.sample(range(0,len(notTestSpksPD)),nv//2)]
@@ -253,6 +253,7 @@ if __name__=="__main__":
                     
                     errs=trainFeats['error'][np.where(trainFeats['wav_file']==spks[trainItr])]
                     xTrain=np.concatenate((bns,errs),axis=1)
+                    #standardize data
                     xTrain=(xTrain-np.min(xTrain))/(np.max(xTrain)-np.min(xTrain))
                     yTrain=np.vstack((np.ones((xTrain.shape[0]))*trainIndc,np.ones((xTrain.shape[0]))*trainOpp)).T
 
@@ -340,6 +341,8 @@ if __name__=="__main__":
                     y_pred_tag=np.array(y_pred_tag)
                     if len(y_pred_tag)>0:
                         num_tr+=1
+                        
+                        """THREE CLASSIFIERS BELOW"""
 #                         #Classification correct if (wlog) median prob difference indicates correct spk type.
 #                         if trainIndc==1 and np.median(y_pred_tag)>0:
 #                             tr_acc+=1
@@ -402,6 +405,8 @@ if __name__=="__main__":
                         y_pred_tag=np.array(y_pred_tag)
                         if len(y_pred_tag)>0:
                             num_val+=1
+                            
+                        """THREE CLASSIFIERS BELOW"""
         #                     #Classification correct if (wlog) median prob difference indicates correct spk type.
         #                     if indc==1 and np.median(y_pred_tag)>=0:
         #                         val_acc+=1
@@ -483,14 +488,16 @@ if __name__=="__main__":
                     #and if speaker is PD than classification assessment is correct (1=>PD,0=>HC).
                     test_loss+=test_loss_curr/len(test_loader.dataset)
                     y_pred_tag=np.array(y_pred_tag)
-                    if len(y_pred_tag)>0:
-                        num_tst+=1
-                        
-                        if indc==1 and np.median(y_pred_tag)>0:
-                            test_acc+=1
-                        elif indc==0 and np.median(y_pred_tag)<0:
-                            test_acc+=1
-    
+                    
+                    """THREE CLASSIFIERS BELOW"""
+    #                     #Classification correct if (wlog) median prob difference indicates correct spk type.
+    #                     if len(y_pred_tag)>0:
+    #                         num_tst+=1
+
+    #                         if indc==1 and np.median(y_pred_tag)>0:
+    #                             test_acc+=1
+    #                         elif indc==0 and np.median(y_pred_tag)<0:
+    #                             test_acc+=1
     #                    #Classification correct if more frame probability differences indicate correct spk type. 
     #                     if indc==1:
     #                         if (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
@@ -499,11 +506,11 @@ if __name__=="__main__":
     #                         if (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
     #                             test_acc+=1
     
-#                        #Classification is based off percent of frames classified correctly.
-#                         if indc==1 :
-#                             test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-#                         elif indc==0:
-#                             test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+                       #Classification is based off percent of frames classified correctly.
+                        if indc==1 :
+                            test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
+                        elif indc==0:
+                            test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
                     else:
                         continue
                     #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.

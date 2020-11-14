@@ -72,20 +72,20 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
 if __name__=="__main__":
 
     if len(sys.argv)!=4:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'narrowband' or 'broadband' or 'wvlt'> <pd path>")
+        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/'    
     
     if sys.argv[1] in MODELS:
         model=sys.argv[1]
     else:
-        print("python pdsvmTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()
     
     if sys.argv[2] in REPS:
         rep=sys.argv[2]
     else:
-        print("python pdsvmTrain.py <'CAE','RAE', or 'ALL'> <'spec' or 'wvlt'> <pd path>")
+        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()    
           
     if sys.argv[3][0] !='/':

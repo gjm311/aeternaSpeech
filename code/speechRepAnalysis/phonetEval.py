@@ -70,8 +70,8 @@ if __name__=="__main__":
             
             reconPath_phonSave=save_path+'/'+str(unit)+'_'+mod+'_'+wav_file+'_recon.csv'
             oriPath_phonSave=save_path+'/'+str(unit)+'_'+mod+'_'+wav_file+'_original.csv'    
-            phon.get_phon_wav(signal=speech_recon,feat_file=reconPath_phonSave,phonclass="all")
-            phon.get_phon_wav(signal=speech_ori,feat_file=oriPath_phonSave,phonclass="all")
+            phon.get_phon_wav(audio_file=speech_recon,phonclass="all",feat_file=reconPath_phonSave)
+            phon.get_phon_wav(audio_file=speech_ori,phonclass="all"feat_file=oriPath_phonSave)
 
             print("processing file ", j+1, " from ", str(num_files), " ", hf[j])
 

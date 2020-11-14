@@ -2,7 +2,7 @@
     "general": {
         "FS":16000,
         "UNITS":256,
-        "ae_tst_percent":0.7
+        "ae_tst_percent":0.65
         },
     
     "wavelet": {
@@ -12,6 +12,7 @@
         "OVRLP":0.5
         },
     "mel_spec": {
+        "SNIP_LEN":500,
         "INTERP_NMELS":128,
         "BB_TIME_WINDOW": 0.005,
         "BB_HOP": 0.003,
@@ -20,6 +21,7 @@
         "NB_HOP": 0.01,
         "NB_NMELS":128,
         "FRAME_SIZE":0.5,
+        "TIME_SHIFT":0.25,
         "TIME_STEPS":126,
         "NFFT":1024
         },

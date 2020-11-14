@@ -64,6 +64,7 @@ if __name__ == "__main__":
         for spk in ['pd','hc']:
             path_audio=path_utter+spk+'/'
             dirNames=os.listdir(path_audio)
+            dirNames.sort()
             wav_files=[name for name in dirNames if '.wav' in name]
 
             num_files=len(wav_files)
@@ -76,7 +77,7 @@ if __name__ == "__main__":
 
                 # for mod in models:
                 aespeech=AEspeech(model=mod,units=unit,rep=rep)
-                if rep=='broadband' or rep=='narrrowband':                  
+                if rep=='broadband' or rep=='narrowband':                  
                     mat=aespeech.compute_spectrograms(wav_file)
                 if rep=='wvlt':
                     mat,freqs=aespeech.compute_cwt(wav_file)

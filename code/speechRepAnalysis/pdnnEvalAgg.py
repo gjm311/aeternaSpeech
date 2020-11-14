@@ -91,7 +91,7 @@ if __name__=="__main__":
 
     PATH=os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv)!=4:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/<UTTER>/'
     
@@ -99,13 +99,13 @@ if __name__=="__main__":
     if sys.argv[1] in MODELS:
         mod=sys.argv[1]
     else:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()
     
     if sys.argv[2] in REPS:
         rep=sys.argv[2]
     else:
-        print("python dnnTrain.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()    
         
     if sys.argv[3][0] !='/':
@@ -469,10 +469,10 @@ if __name__=="__main__":
                 
                 #THREE CLASSIFICATION TYPES:
                 #1. Classification correct if (wlog) median prob difference indicates correct spk type.
-                if indc==1 and np.median(y_pred_tag)>0:
-                    test_acc+=1
-                elif indc==0 and np.median(y_pred_tag)<0:
-                    test_acc+=1
+#                 if indc==1 and np.median(y_pred_tag)>0:
+#                     test_acc+=1
+#                 elif indc==0 and np.median(y_pred_tag)<0:
+#                     test_acc+=1
                     
 #                #2. Classification correct if more frame probability differences indicate correct spk type. 
 #                 if indc==1:
@@ -482,11 +482,11 @@ if __name__=="__main__":
 #                     if (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
 #                         test_acc+=1
 
-#                #3. Classification is based off percent of frames classified correctly.
-#                    if indc==1 :
-#                        test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-#                    elif indc==0:
-#                        test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+               #3. Classification is based off percent of frames classified correctly.
+                    if indc==1 :
+                        test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
+                    elif indc==0:
+                        test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
 
                 #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.
                 testResults[itr]['tstSpk_data'][tstId]=y_test_pred.cpu().detach().numpy()

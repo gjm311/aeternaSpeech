@@ -33,12 +33,12 @@ class Phonet:
         self.hidden_size=64
         self.lr=0.001
         self.recurrent_droput_prob=0.0
-        self.size_frame=0.05
+        self.size_frame=0.025
         self.time_shift=0.025
-        self.nfilt=128
+        self.nfilt=33
         self.len_seq=20
         self.num_labels=2
-        self.nfeat=128
+        self.nfeat=34
         self.thrplot=0.5
         self.nphonemes=22
         
@@ -111,15 +111,15 @@ class Phonet:
             return np.nan
 
 
-    def get_phon_wav(self, feat, feat_file, phonclass):
+    def get_phon_wav(self, audio_file, phonclass, feat_file=None, save=1):
         """
         Estimate the phonological classes using the BGRU models for an audio file (.wav)
 
         :param audio_file: numpy signal
-        :param feat_file: file (.csv) to save the posteriors for the phonological classes
+        :param feat_file: file (.pkl) to save the posteriors for the phonological classes
         :param phonclass: phonological class to be evaluated:("consonantal","back","anterior", "open", "close", "stop",###"nasal","continuant",  "lateral", "flap", "trill", "voice", "strident","labial", "dental", "velar", "pause", "vocalic", "all").
         :param plot_flag: True or False, whether you want plots of phonological classes or not
-        :returns: A csv file created at FEAT_FILE with the posterior probabilities for the phonological classes.
+        :returns: A panda df created at FEAT_FILE with the posterior probabilities for the phonological classes.
         """
 
         if phonclass == 'all':
@@ -151,7 +151,7 @@ class Phonet:
 #         fs, signal=read(audio_file)
 #         if fs!=16000:
 #             raise ValueError(str(fs)+" is not a valid sampling frequency")
-#         feat=self.get_feat(signal,16000)
+        feat=self.get_feat(audio_file,16000)
         nf=int(feat.shape[0]/self.len_seq)
         start=0
         fin=self.len_seq
@@ -180,7 +180,8 @@ class Phonet:
             df[keys_val[l]]=np.hstack(pred_matv)
         
         df2=pd.DataFrame(df)
-        df2.to_csv(feat_file)
+        if save==1:
+            df2.to_pickle(feat_file)
         K.clear_session()
         gc.collect()
         return(df2)

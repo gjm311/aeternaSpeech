@@ -144,6 +144,10 @@ if __name__=="__main__":
             pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
             pdTrErrs=np.array([np.mean(pdTrErrs,axis=0),np.std(pdTrErrs,axis=0),skew(pdTrErrs,axis=0),kurtosis(pdTrErrs,axis=0)])
             pds[ii,:,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
+            if np.isfinite(pdTrBns).all() and np.isfinite(pdTrErrs).all():
+                continue
+            else:
+                pdTrErrs=pdTrErrs[:-1,:]
         for ii,tr in enumerate(hcAll):
             tritr=hcIds[ii]
             hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
@@ -222,8 +226,8 @@ if __name__=="__main__":
                 xTest=np.concatenate((pdTest,hcTest),axis=0)
                 xTest=(xTest-np.min(xTest))/(np.max(xTest)-np.min(xTest))
 
-                pdYTest=np.ones((pdTest.shape[1])).T
-                hcYTest=np.zeros((pdTest.shape[1])).T
+                pdYTest=np.ones((pdTest.shape[0])).T
+                hcYTest=np.zeros((pdTest.shape[0])).T
                 yTest=np.concatenate((pdYTest,hcYTest),axis=0)
 
                 param_grid = [
@@ -239,9 +243,39 @@ if __name__=="__main__":
     #                                 kernel=grid.best_params_['kernel'], probability=True)
     #             grid.fit(xTrain,yTrain)
 
-                train_acc=grid.score(xTrain,yTrain)
-                test_acc=grid.score(xTest,yTest)
+#                 train_acc=grid.score(xTrain,yTrain)
+#                 test_acc=grid.score(xTest,yTest)
+            
+                tr_bin_class=grid.predict_proba(xTrain)
+                train_acc=0
+                opt_thresh=0
+                diffs=tr_bin_class[:,0]-tr_bin_class[:,1]
+                for thresh in range(-50,50):
+                    thresh=thresh/100
+                    g_locs=np.where(diffs>=thresh)
+                    l_locs=np.where(diffs<thresh)
+                    if sum(diffs[0:pdYTrain.shape[0]])<0:
+                        acc_curr=len(np.where(l_locs[0]<pdYTrain.shape[0])[0])
+                        acc_curr+=len(np.where(g_locs[0]>=pdYTrain.shape[0])[0])
+                    else:
+                        acc_curr=len(np.where(l_locs[0]>=pdYTrain.shape[0])[0])
+                        acc_curr+=len(np.where(g_locs[0]<pdYTrain.shape[0])[0])
+                    
+                    if acc_curr/yTrain.shape[0]>train_acc:
+                        opt_thresh=thresh
+                        train_acc=acc_curr/yTrain.shape[0]
+                
                 bin_class=grid.predict_proba(xTest)
+                tst_diffs=bin_class[:,0]-bin_class[:,1]
+                tst_g_locs=np.where(tst_diffs>=opt_thresh)
+                tst_l_locs=np.where(tst_diffs<opt_thresh)
+                if sum(diffs[0:pdYTrain.shape[0]])<0:
+                    test_acc=len(np.where(tst_l_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+                    test_acc+=len(np.where(tst_g_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
+                else:
+                    test_acc=len(np.where(tst_l_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
+                    test_acc+=len(np.where(tst_g_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+                
                 class_report=classification_report(yTest,grid.predict(xTest))
                 results[utter]['train_acc']+=train_acc*(1/(i_itrs*o_itrs))
                 results[utter]['test_acc']+=test_acc*(1/(i_itrs*o_itrs))
@@ -249,9 +283,12 @@ if __name__=="__main__":
                 for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
                     results[utter]['bin_class'][o_itr][pdId]=bin_class[cpi]     
                     results[utter]['bin_class'][o_itr][hcId]=bin_class[cpi+int(num_pdHc_tests/2)]
-                pdb.set_trace()
+
+#         pdb.set_trace()
         results.to_pickle(save_path+model+'_'+rep+"Results.pkl")
     
     
 
 
+
+    

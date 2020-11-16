@@ -523,8 +523,9 @@ class AEspeech:
         :param tensor: input tensor for the AEs (N, 128,126)
         :returns:  standardize tensor for the AEs (N, 128,126)
         """
-        temp=tensor-self.min_scaler
-        temp/(self.max_scaler-self.min_scaler)
+        
+        temp=tensor-tensor.min()
+        temp/(tensor.max()-tensor.min())
         return temp.float()
 
     def destandard(self, tensor):
@@ -557,7 +558,7 @@ class AEspeech:
         to=self.destandard(to)
         
         if return_numpy:
-            return bot.data.numpy()
+            return bot.data.cuda().numpy()
         else:
             return bot
 
@@ -582,9 +583,11 @@ class AEspeech:
         to=self.destandard(to)
 
         mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
-        error=torch.mean(mat_error,2)
+        error=torch.mean(mat_error,2).detach().numpy()
+        error=(error-np.mean(error)/np.std(error)
+               
         if return_numpy:
-            return error.data.numpy()
+            return error
         else:
             return error
 
@@ -605,7 +608,7 @@ class AEspeech:
         to=self.destandard(to)
 
         if return_numpy:
-            return to.data.numpy()
+            return to.data.cuda().numpy()
         else:
             return to
 

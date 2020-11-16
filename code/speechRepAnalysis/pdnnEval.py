@@ -18,6 +18,22 @@ import argparse
 import pdb
 from sklearn import metrics
 
+"""
+Traceback (most recent call last):
+  File "pdnnEval.py", line 280, in <module>
+    y_pred=model.forward(X_train)
+  File "/cluster/ag61iwyb/pdnn.py", line 26, in forward
+    x=F.leaky_relu(self.fc1(x))
+  File "/home/ag61iwyb/.local/lib/python3.6/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/home/ag61iwyb/.local/lib/python3.6/site-packages/torch/nn/modules/linear.py", line 91, in forward
+    return F.linear(input, self.weight, self.bias)
+  File "/home/ag61iwyb/.local/lib/python3.6/site-packages/torch/nn/functional.py", line 1674, in linear
+    ret = torch.addmm(bias, input, weight.t())
+RuntimeError: mat1 dim 1 must match mat2 dim 0
+
+"""
+
 
 PATH=os.path.dirname(os.path.abspath(__file__))
 
@@ -142,6 +158,7 @@ if __name__=="__main__":
 #     lr_scores=pd.DataFrame(columns=LRs,index=np.arange(1))
 #     for lrItr,LR in enumerate(LRs):
     
+    threshes=np.arange(-50,50)
     nt=100-(num_pdHc_tests+nv)
     for itr in range(100//num_pdHc_tests):
         trainResultsEpo_curr=[]
@@ -299,142 +316,152 @@ if __name__=="__main__":
 #                     time.time()-start
 #                     ))         
                 
-                #Iterate through all num_tr training patients and classify based off difference in probability of PD/HC 
-                tr_acc=0
-                num_tr=0
-                for trainItr in rand_range:   
-                    if trainItr in np.concatenate((pdIds,hcIds,valIds)):
-                        continue
+    
+                #Iterate through thresholds and choose one that yields best validation acc.
+                #Iterate through all num_tr training patients and classify based off difference in probability of PD/HC
+                max_val_acc=0
+                opt_thresh=0
+                for thresh in range(-100,100):
+                    thresh=thresh/100
+                    tr_acc=0
+                    num_tr=0
+                    for trainItr in rand_range:   
+                        if trainItr in np.concatenate((pdIds,hcIds,valIds)):
+                            continue
 
-                    if trainItr<num_pd:
-                        trainIndc=1
-                        trainOpp=0
-                        trainFeats=pdFeats
-                    else:
-                        trainIndc=0
-                        trainOpp=1
-                        trainFeats=hcFeats
-
-                    #getting bottle neck features and reconstruction error for particular training speaker
-                    bns=trainFeats['bottleneck'][np.where(trainFeats['wav_file']==spks[trainItr])]
-                    errs=trainFeats['error'][np.where(trainFeats['wav_file']==spks[trainItr])]
-                    xTrain=np.concatenate((bns,errs),axis=1)
-                    xTrain=(xTrain-np.min(xTrain))/(np.max(xTrain)-np.min(xTrain))
-                    yTrain=np.vstack((np.ones((xTrain.shape[0]))*trainIndc,np.ones((xTrain.shape[0]))*trainOpp)).T
-
-                    train_data=testData(torch.FloatTensor(xTrain))
-                    train_loader=torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, num_workers=NUM_W)
-                    y_pred_tag=[]
-                    model.eval()
-                    with torch.no_grad():
-                        for X_tr in train_loader:
-                            yTr=np.vstack((np.ones((X_tr.shape[0]))*trainIndc,np.ones((X_tr.shape[0]))*trainOpp)).T
-                            if torch.cuda.is_available():
-                                X_tr=X_tr.cuda()
-
-                            y_tr_pred = model.forward(X_tr)
-
-                            #Find difference in probability of PD v. HC for all segments. 
-                            y_pred_tag.extend((y_tr_pred[:,0]-y_tr_pred[:,1]).cpu().detach().numpy())
-
-                    #Wlog, if difference greater than 0 occurs more and speaker is PD, than identification is correct (1=PD,0=HC).
-                    y_pred_tag=np.array(y_pred_tag)
-                    if len(y_pred_tag)>0:
-                        num_tr+=1
-                        
-                        """THREE CLASSIFIERS BELOW"""
-#                         #Classification correct if (wlog) median prob difference indicates correct spk type.
-#                         if trainIndc==1 and np.median(y_pred_tag)>0:
-#                             tr_acc+=1
-#                         elif trainIndc==0 and np.median(y_pred_tag)<0:
-#                             tr_acc+=1               
-
-    #                    #Classification correct if more frame probability differences indicate correct spk type. 
-    #                     if trainIndc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
-    #                         tr_acc+=1
-    #                     elif trainIndc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
-    #                         tr_acc+=1
-
-                       #Classification is based off percent of frames classified correctly.
-                        if trainIndc==1 :
-                            tr_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-                        elif trainIndc==0:
-                            tr_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
-                    else:
-                        continue
-                            
-                trainResults_epo.iloc[epoch]['train_acc']=tr_acc/num_tr
-                
-                if np.mod(epoch,1)==0:
-                    #Validate at end of each 5 epochs for 5 speakers
-                    val_loss=0.0
-                    val_acc=0
-                    num_val=0
-                    for vid in valDict.keys():
-                        if vid<num_pd:
-                            indc=1
-                            opp=0
+                        if trainItr<num_pd:
+                            trainIndc=1
+                            trainOpp=0
+                            trainFeats=pdFeats
                         else:
-                            indc=0
-                            opp=1
-                        y_pred_tag=[]
-                        xVal=valDict[vid]
-                        xVal=(xVal-np.min(xVal))/(np.max(xVal)-np.min(xVal))
-                        test_data=testData(torch.FloatTensor(xVal))
-                        test_loader=torch.utils.data.DataLoader(test_data, batch_size=BATCH_SIZE, num_workers=NUM_W, drop_last=False, shuffle=True) 
+                            trainIndc=0
+                            trainOpp=1
+                            trainFeats=hcFeats
 
+                        #getting bottle neck features and reconstruction error for particular training speaker
+                        bns=trainFeats['bottleneck'][np.where(trainFeats['wav_file']==spks[trainItr])]
+                        errs=trainFeats['error'][np.where(trainFeats['wav_file']==spks[trainItr])]
+                        xTrain=np.concatenate((bns,errs),axis=1)
+                        xTrain=(xTrain-np.min(xTrain))/(np.max(xTrain)-np.min(xTrain))
+                        yTrain=np.vstack((np.ones((xTrain.shape[0]))*trainIndc,np.ones((xTrain.shape[0]))*trainOpp)).T
+
+                        train_data=testData(torch.FloatTensor(xTrain))
+                        train_loader=torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, num_workers=NUM_W)
+                        y_pred_tag=[]
                         model.eval()
                         with torch.no_grad():
-                            for X_test in test_loader:
-                                yTest=np.vstack((np.ones((X_test.shape[0]))*indc,np.ones((X_test.shape[0]))*opp)).T
+                            for X_tr in train_loader:
+                                yTr=np.vstack((np.ones((X_tr.shape[0]))*trainIndc,np.ones((X_tr.shape[0]))*trainOpp)).T
                                 if torch.cuda.is_available():
-                                    X_test=X_test.cuda()
+                                    X_tr=X_tr.cuda()
 
-                                y_test_pred = model.forward(X_test)
+                                y_tr_pred = model.forward(X_tr)
 
                                 #Find difference in probability of PD v. HC for all segments. 
-                                y_pred_tag.extend((y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy())
-                                if torch.cuda.is_available():
-                                    loss = criterion(y_test_pred, torch.from_numpy(yTest).cuda().float())
-                                else:
-                                    loss = criterion(y_test_pred, torch.from_numpy(yTest).float())
-                                val_loss+=loss.item()*X_test.size(0)
+                                y_pred_tag.extend((y_tr_pred[:,0]-y_tr_pred[:,1]).cpu().detach().numpy())
 
-
-                        val_loss=val_loss/len(test_loader.dataset)
+                        #Wlog, if difference greater than 0 occurs more and speaker is PD, than identification is correct (1=PD,0=HC).
                         y_pred_tag=np.array(y_pred_tag)
                         if len(y_pred_tag)>0:
-                            num_val+=1
-                            
-                        """THREE CLASSIFIERS BELOW"""
-        #                     #Classification correct if (wlog) median prob difference indicates correct spk type.
-        #                     if indc==1 and np.median(y_pred_tag)>=0:
-        #                         val_acc+=1
-        #                     elif indc==0 and np.median(y_pred_tag)<=0:
-        #                         val_acc+=1
+                            num_tr+=1
+
+                            """THREE CLASSIFIERS BELOW"""
+    #                         #Classification correct if (wlog) median prob difference indicates correct spk type.
+    #                         if trainIndc==1 and np.median(y_pred_tag)>0:
+    #                             tr_acc+=1
+    #                         elif trainIndc==0 and np.median(y_pred_tag)<0:
+    #                             tr_acc+=1               
 
         #                    #Classification correct if more frame probability differences indicate correct spk type. 
-        #                     if indc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
-        #                         val_acc+=1
-        #                     elif indc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
-        #                         val_acc+=1
+        #                     if trainIndc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
+        #                         tr_acc+=1
+        #                     elif trainIndc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
+        #                         tr_acc+=1
 
                            #Classification is based off percent of frames classified correctly.
-                            if indc==1 :
-                                val_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-                            elif indc==0:
-                                val_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+                            if trainIndc==1 :
+                                tr_acc+=len(y_pred_tag[np.where(y_pred_tag>thresh)])/len(y_pred_tag)
+                            elif trainIndc==0:
+                                tr_acc+=len(y_pred_tag[np.where(y_pred_tag<thresh)])/len(y_pred_tag)
                         else:
                             continue
 
-                    trainResults_epo.iloc[epoch]['val_loss']=val_loss/num_val
-                    trainResults_epo.iloc[epoch]['val_acc']=val_acc/num_val
-                    print('Train Loss: {:.6f} Train Accuracy: {}\nValidation Loss: {:.6f} Validation Accuracy: {}\n'.format(
-                    train_loss/nt,  
-                    tr_acc/num_tr,
-                    val_loss/num_val,
-                    val_acc/num_val,
-                    ))      
+#                     trainResults_epo.iloc[epoch]['train_acc']=tr_acc/num_tr
+
+                    if np.mod(epoch,1)==0:
+                        #Validate at end of each 1 epochs for nv speakers
+                        val_loss=0.0
+                        val_acc=0
+                        num_val=0
+                        for vid in valDict.keys():
+                            if vid<num_pd:
+                                indc=1
+                                opp=0
+                            else:
+                                indc=0
+                                opp=1
+                            y_pred_tag=[]
+                            xVal=valDict[vid]
+                            xVal=(xVal-np.min(xVal))/(np.max(xVal)-np.min(xVal))
+                            test_data=testData(torch.FloatTensor(xVal))
+                            test_loader=torch.utils.data.DataLoader(test_data, batch_size=BATCH_SIZE, num_workers=NUM_W, drop_last=False, shuffle=True) 
+
+                            model.eval()
+                            with torch.no_grad():
+                                for X_test in test_loader:
+                                    yTest=np.vstack((np.ones((X_test.shape[0]))*indc,np.ones((X_test.shape[0]))*opp)).T
+                                    if torch.cuda.is_available():
+                                        X_test=X_test.cuda()
+
+                                    y_test_pred = model.forward(X_test)
+
+                                    #Find difference in probability of PD v. HC for all segments. 
+                                    y_pred_tag.extend((y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy())
+                                    if torch.cuda.is_available():
+                                        loss = criterion(y_test_pred, torch.from_numpy(yTest).cuda().float())
+                                    else:
+                                        loss = criterion(y_test_pred, torch.from_numpy(yTest).float())
+                                    val_loss+=loss.item()*X_test.size(0)
+
+
+                            val_loss=val_loss/len(test_loader.dataset)
+                            y_pred_tag=np.array(y_pred_tag)
+                            if len(y_pred_tag)>0:
+                                num_val+=1
+
+                            """THREE CLASSIFIERS BELOW"""
+            #                     #Classification correct if (wlog) median prob difference indicates correct spk type.
+            #                     if indc==1 and np.median(y_pred_tag)>=0:
+            #                         val_acc+=1
+            #                     elif indc==0 and np.median(y_pred_tag)<=0:
+            #                         val_acc+=1
+
+            #                    #Classification correct if more frame probability differences indicate correct spk type. 
+            #                     if indc==1 and (len(y_pred_tag[np.where(y_pred_tag>0)]) >= len(y_pred_tag[np.where(y_pred_tag<0)])):
+            #                         val_acc+=1
+            #                     elif indc==0 and (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
+            #                         val_acc+=1
+
+                           #Classification is based off percent of frames classified correctly.
+                            if indc==1 :
+                                val_acc+=len(y_pred_tag[np.where(y_pred_tag>thresh)])/len(y_pred_tag)
+                            elif indc==0:
+                                val_acc+=len(y_pred_tag[np.where(y_pred_tag<thresh)])/len(y_pred_tag)
+                            else:
+                                continue
+                        
+                        if val_acc/num_val>max_val_acc:
+                            max_val_acc=val_acc/num_val
+                            opt_thresh=thresh
+                            trainResults_epo.iloc[epoch]['train_acc']=tr_acc/num_tr
+                            trainResults_epo.iloc[epoch]['val_loss']=val_loss/num_val
+                            trainResults_epo.iloc[epoch]['val_acc']=val_acc/num_val
+                            print('Train Loss: {:.6f} Train Accuracy: {}\nValidation Loss: {:.6f} Validation Accuracy: {}\n'.format(
+                            train_loss/nt,  
+                            tr_acc/num_tr,
+                            val_loss/num_val,
+                            val_acc/num_val,
+                            ))      
                     
 #                     if val_loss/num_val<=valid_loss_min:
 #                         torch.save(model, save_path+mod+'_'+rep+'_model.pt')
@@ -506,11 +533,11 @@ if __name__=="__main__":
     #                         if (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
     #                             test_acc+=1
     
-                       #Classification is based off percent of frames classified correctly.
-                        if indc==1 :
-                            test_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
-                        elif indc==0:
-                            test_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
+                   #Classification is based off percent of frames classified correctly.
+                    if indc==1 :
+                        test_acc+=len(y_pred_tag[np.where(y_pred_tag>opt_thresh)])/len(y_pred_tag)
+                    elif indc==0:
+                        test_acc+=len(y_pred_tag[np.where(y_pred_tag<opt_thresh)])/len(y_pred_tag)
                     else:
                         continue
                     #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.

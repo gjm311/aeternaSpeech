@@ -41,7 +41,6 @@ if __name__ == "__main__":
     with open("config.json") as f:
         data = f.read()
     config = json.loads(data)
-    time_steps=config['general']['FS']
     unit=config['general']['UNITS']
     
     save_path=PATH+'/pts/'+'/reconErrs/'
@@ -51,9 +50,11 @@ if __name__ == "__main__":
     save_path=save_path+mod+'_'+rep+'.pickle'
     
     if rep=='wvlt':
-        time_steps=config['wavelet']['TIME_STEPS']
-    else:
-        time_steps=config['mel_spec']['TIME_STEPS']        
+        freqs=config['wavelet']['NBF']
+    elif rep=='narrowband':
+        freqs=config['mel_spec']['NB_NMELS'] 
+    elif rep=='broadband':
+        freqs=config['mel_spec']['BB_NMELS'] 
     
     data={spk:{'means':[], 'stds':[]} for spk in ['pd','hc']}
     utters= os.listdir(PATH+sys.argv[3])
@@ -68,8 +69,8 @@ if __name__ == "__main__":
             wav_files=[name for name in dirNames if '.wav' in name]
 
             num_files=len(wav_files)
-            data_curr=np.zeros((num_files,time_steps))
-            data_curr=np.zeros((num_files,time_steps))
+            data_curr_means=np.zeros((num_files,freqs))
+            data_curr_sds=np.zeros((num_files,freqs))
 
             for ii,wav_file in enumerate(wav_files):
                 wav_file=path_audio+wav_file
@@ -86,13 +87,17 @@ if __name__ == "__main__":
                     mat=mat.cuda()
                 to,bot=aespeech.AE.forward(mat)
                 to=aespeech.destandard(to)
+                
+                mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
+                error=torch.mean(mat_error,2).detach().numpy()
+                error=(error-error.mean())/error.std()
                     
-                data_curr[ii,:]=np.mean(np.mean((mat[:,0,:,:].cpu().detach().numpy()-to[:,0,:,:].cpu().detach().numpy())**2,axis=1),axis=0)
-                data_curr[ii,:]=np.std(np.std((mat[:,0,:,:].cpu().detach().numpy()-to[:,0,:,:].cpu().detach().numpy())**2,axis=1),axis=0)
+                data_curr_means[ii,:]=np.mean(error,axis=0)
+                data_curr_sds[ii,:]=np.std(error,axis=0)
                 
             if itr==0:
-                data[spk]['means']=data_curr
-                data[spk]['stds']=data_curr
+                data[spk]['means']=data_curr_means
+                data[spk]['stds']=data_curr_sds
             else:
                 data[spk]['means']=np.concatenate((data[spk]['means'],data_curr),axis=0)
                 data[spk]['stds']=np.concatenate((data[spk]['stds'],data_curr),axis=0)

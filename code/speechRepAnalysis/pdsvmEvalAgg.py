@@ -140,6 +140,11 @@ if __name__=="__main__":
             pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
             pdTrErrs=np.array([np.mean(pdTrErrs,axis=0),np.std(pdTrErrs,axis=0),skew(pdTrErrs,axis=0),kurtosis(pdTrErrs,axis=0)])
             pds[(ii*num_utters)+uIdx,:,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
+            if np.isfinite(pdTrBns).all() and np.isfinite(pdTrErrs).all():
+                continue
+            else:
+#                 pdTrErrs=pdTrErrs[:-1,:]
+                pdb.set_trace()
         for ii,tr in enumerate(hcAll):
             tritr=hcIds[ii]
             hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
@@ -147,12 +152,12 @@ if __name__=="__main__":
             hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
             hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
             hcs[(ii*num_utters)+uIdx,:,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
-
+                
     pdXAll=np.reshape(pds,(pds.shape[0],num_feats*4))
     hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
     xAll=np.concatenate((pdXAll,hcXAll),axis=0)
     st_xAll=StandardScaler().fit_transform(pd.DataFrame(xAll))
-
+    
     pca = PCA(n_components=min(xAll.shape[0],xAll.shape[1]))
     pca.fit_transform(st_xAll)
     variance = pca.explained_variance_ratio_ #calculate variance ratios
@@ -161,9 +166,9 @@ if __name__=="__main__":
     pca = PCA(n_components=ncs)
     pca_xAll=pca.fit_transform(st_xAll)
     
-    #split data into training and test with multiple iterations (90 training, 10 test per iter and evenly split PD:HC)
+    #split data into training and test with multiple iterations
     num_pdHc_tests=config['svm']['tst_spks']#must be even (same # of test pds and hcs per iter)
-    nv=config['svms']['val_spks']#number of validation speakers per split#must be even and a divisor of num_spks (same # of test pds and hcs per iter)
+    nv=config['svm']['val_size']#number of validation speakers per split#must be even and a divisor of num_spks (same # of test pds and hcs per iter)
     if  np.mod(num_pdHc_tests,2)!=0:
         print("number of test spks must be even...")
         sys.exit()
@@ -227,9 +232,41 @@ if __name__=="__main__":
 
             grid.fit(xTrain,yTrain)
 
-            train_acc=grid.score(xTrain,yTrain)
-            test_acc=grid.score(xTest,yTest)
+#             train_acc=grid.score(xTrain,yTrain)
+#             test_acc=grid.score(xTest,yTest)
+#             bin_class=grid.predict_proba(xTest)
+            
+            tr_bin_class=grid.predict_proba(xTrain)
+            train_acc=0
+            opt_thresh=0
+            diffs=tr_bin_class[:,0]-tr_bin_class[:,1]
+            for thresh in range(-50,50):
+                thresh=thresh/100
+                g_locs=np.where(diffs>=thresh)
+                l_locs=np.where(diffs<thresh)
+                if sum(diffs[0:pdYTrain.shape[0]])<0:
+                    acc_curr=len(np.where(l_locs[0]<pdYTrain.shape[0])[0])
+                    acc_curr+=len(np.where(g_locs[0]>=pdYTrain.shape[0])[0])
+                else:
+                    acc_curr=len(np.where(l_locs[0]>=pdYTrain.shape[0])[0])
+                    acc_curr+=len(np.where(g_locs[0]<pdYTrain.shape[0])[0])
+
+                if acc_curr/yTrain.shape[0]>train_acc:
+                    opt_thresh=thresh
+                    train_acc=acc_curr/yTrain.shape[0]
+
             bin_class=grid.predict_proba(xTest)
+            tst_diffs=bin_class[:,0]-bin_class[:,1]
+            tst_g_locs=np.where(tst_diffs>=opt_thresh)
+            tst_l_locs=np.where(tst_diffs<opt_thresh)
+            if sum(diffs[0:pdYTrain.shape[0]])<0:
+                test_acc=len(np.where(tst_l_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+                test_acc+=len(np.where(tst_g_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
+            else:
+                test_acc=len(np.where(tst_l_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
+                test_acc+=len(np.where(tst_g_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+            
+            
     #             avg_precision=average_precision_score(yTest, grid.decision_function(xTest))
             class_report=classification_report(yTest,grid.predict(xTest))
             results['Data']['train_acc']+=train_acc*(1/(num_pdHc_tests*total_itrs))

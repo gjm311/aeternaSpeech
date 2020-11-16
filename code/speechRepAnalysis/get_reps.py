@@ -81,6 +81,7 @@ if __name__ == "__main__":
     maxNB_en = -np.inf
     maxWvlt_en = -np.inf
     minWvlt_en = np.inf
+    
     for trtst in ['/train/', '/test/']:
         audio_path=PATH_AUDIO+trtst
         bb_path=PATH_BB+trtst
@@ -121,109 +122,108 @@ if __name__ == "__main__":
             file_nb_out=nb_path+hf[j].replace(".wav", "")
             file_wvlt_out=wvlt_path+hf[j].replace(".wav", "")
             
-#             if not os.path.isfile(file_wvlt_out+"_"+str(0)+".npy"):              
-#                 SNIP_LEN=config['wavelet']['SNIP_LEN']
-#                 NBF=config['wavelet']['NBF']
-#                 TIME_STEPS=config['wavelet']['TIME_STEPS']
-#                 OVRLP=config['wavelet']['OVRLP']
-#                 NFR=int(data.shape[0]*1000/(FS*SNIP_LEN))
-#                 WV_FRAME_SIZE=int(data.shape[0]/NFR)
-#                 SHIFT=int(WV_FRAME_SIZE*OVRLP)
-#                 DIM=(TIME_STEPS,NBF)
+            if not os.path.isfile(file_wvlt_out+"_"+str(0)+".npy"):              
+                SNIP_LEN=config['wavelet']['SNIP_LEN']
+                NBF=config['wavelet']['NBF']
+                TIME_STEPS=config['wavelet']['TIME_STEPS']
+                OVRLP=config['wavelet']['OVRLP']
+                NFR=int(data.shape[0]*1000/(FS*SNIP_LEN))
+                WV_FRAME_SIZE=int(data.shape[0]/NFR)
+                SHIFT=int(WV_FRAME_SIZE*OVRLP)
+                DIM=(TIME_STEPS,NBF)
 
-#                 init=0
-#                 endi=WV_FRAME_SIZE
-#                 wv_mat=np.zeros((1,NBF,TIME_STEPS),dtype=np.float32)
+                init=0
+                endi=WV_FRAME_SIZE
+                wv_mat=np.zeros((1,NBF,TIME_STEPS),dtype=np.float32)
 
-#                 for k in range(NFR):    
-#                     frame=data[init:endi]                         
-#                     init=init+int(SHIFT)
-#                     endi=endi+int(SHIFT)
-#                     cwtmatr,_ = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
+                for k in range(NFR):    
+                    frame=data[init:endi]                         
+                    init=init+int(SHIFT)
+                    endi=endi+int(SHIFT)
+                    cwtmatr,_ = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
+                    bicubic_img = cv2.resize(np.real(cwtmatr),DIM,interpolation=cv2.INTER_CUBIC)
 
-#                     bicubic_img = cv2.resize(np.real(cwtmatr),DIM,interpolation=cv2.INTER_CUBIC)
+                    #Looking for min/max coefficients for standardization.
+                    max_curr = np.max(bicubic_img)
+                    min_curr = np.min(bicubic_img)
+                    if max_curr > maxWvlt_en:
+                        maxWvlt_en = max_curr
+                    if min_curr < minWvlt_en:
+                        minWvlt_en = min_curr    
 
-#                     #Looking for min/max coefficients for standardization.
-#                     max_curr = np.max(bicubic_img)
-#                     min_curr = np.min(bicubic_img)
-#                     if max_curr > maxWvlt_en:
-#                         maxWvlt_en = max_curr
-#                     if min_curr < minWvlt_en:
-#                         minWvlt_en = min_curr    
-
-#                     wv_mat[0,:,:]=bicubic_img
-#                     np.save(file_wvlt_out+"_"+str(k)+".npy",wv_mat)
+                    wv_mat[0,:,:]=bicubic_img
+                    np.save(file_wvlt_out+"_"+str(k)+".npy",wv_mat)
 
 
-            if not os.path.isfile(file_nb_out+"_"+str(0)+".npy"):
-                BB_TIME_WINDOW=config['mel_spec']['BB_TIME_WINDOW']
-                BB_HOP=config['mel_spec']['BB_HOP']
-                BB_NMELS=config['mel_spec']['BB_NMELS']
-                NB_TIME_WINDOW=config['mel_spec']['NB_TIME_WINDOW']
-                NB_HOP=config['mel_spec']['NB_HOP']
-                NB_NMELS=config['mel_spec']['NB_NMELS']
+#             if not os.path.isfile(file_nb_out+"_"+str(0)+".npy"):
+#                 BB_TIME_WINDOW=config['mel_spec']['BB_TIME_WINDOW']
+#                 BB_HOP=config['mel_spec']['BB_HOP']
+#                 BB_NMELS=config['mel_spec']['BB_NMELS']
+#                 NB_TIME_WINDOW=config['mel_spec']['NB_TIME_WINDOW']
+#                 NB_HOP=config['mel_spec']['NB_HOP']
+#                 NB_NMELS=config['mel_spec']['NB_NMELS']
 
-                NFFT=config['mel_spec']['NFFT']
-                INTERP_NMELS=config['mel_spec']['INTERP_NMELS']
-                TIME_STEPS=config['mel_spec']['TIME_STEPS']
-                FRAME_SIZE=config['mel_spec']['FRAME_SIZE']
-                TIME_SHIFT=config['mel_spec']['TIME_SHIFT']
-                sig_len=len(data)
+#                 NFFT=config['mel_spec']['NFFT']
+#                 INTERP_NMELS=config['mel_spec']['INTERP_NMELS']
+#                 TIME_STEPS=config['mel_spec']['TIME_STEPS']
+#                 FRAME_SIZE=config['mel_spec']['FRAME_SIZE']
+#                 TIME_SHIFT=config['mel_spec']['TIME_SHIFT']
+#                 sig_len=len(data)
 
-                FRAME_SIZE=FS*FRAME_SIZE
-                TIME_SHIFT=FS*TIME_SHIFT
-                for nb,band in enumerate([file_bb_out,file_nb_out]):
+#                 FRAME_SIZE=FS*FRAME_SIZE
+#                 TIME_SHIFT=FS*TIME_SHIFT
+#                 for nb,band in enumerate([file_bb_out,file_nb_out]):
 
-                    #binary narrowband: 1 yes, 0 no (i.e. broadband)
-                    if nb==0:
-                        #broadband: higher time resolution, less frequency resolution
-                        HOP=int(FS*BB_HOP)#3ms hop (48 SAMPLES)
-                        WIN_LEN=int(FS*BB_TIME_WINDOW)#5ms time window (60 SAMPLES)
-                        NMELS=BB_NMELS
-                        signal=butter_bandpass_filter(data,50,7000,FS)
-                    elif nb==1:
-                        #narrowband: higher frequency resolution, less time resolution
-                        HOP=int(FS*NB_HOP) #10ms hop (160 SAMPLES)
-                        WIN_LEN=int(FS*NB_TIME_WINDOW) #30ms time window (480 SAMPLES)
-                        NMELS=NB_NMELS
-                        signal=butter_bandpass_filter(data,300,5000,FS)
+#                     #binary narrowband: 1 yes, 0 no (i.e. broadband)
+#                     if nb==0:
+#                         #broadband: higher time resolution, less frequency resolution
+#                         HOP=int(FS*BB_HOP)#3ms hop (48 SAMPLES)
+#                         WIN_LEN=int(FS*BB_TIME_WINDOW)#5ms time window (60 SAMPLES)
+#                         NMELS=BB_NMELS
+#                         signal=butter_bandpass_filter(data,50,7000,FS)
+#                     elif nb==1:
+#                         #narrowband: higher frequency resolution, less time resolution
+#                         HOP=int(FS*NB_HOP) #10ms hop (160 SAMPLES)
+#                         WIN_LEN=int(FS*NB_TIME_WINDOW) #30ms time window (480 SAMPLES)
+#                         NMELS=NB_NMELS
+#                         signal=butter_bandpass_filter(data,300,5000,FS)
 
-                    init=0
-                    endi=int(FRAME_SIZE)
-                    nf=int(sig_len/TIME_SHIFT)-1
+#                     init=0
+#                     endi=int(FRAME_SIZE)
+#                     nf=int(sig_len/TIME_SHIFT)-1
                     
-                    if nf>0:
-                        mat=np.zeros((1,INTERP_NMELS,TIME_STEPS), dtype=np.float32)
-                        for k in range(nf):
-                            frame=signal[init:endi]
-                            imag=melspectrogram(frame, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
-                            imag=imag[np.where(imag[:,0]>0)]
-                            imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
-                            imag=np.abs(imag)
-                            init=init+int(TIME_SHIFT)
-                            endi=endi+int(TIME_SHIFT)
-                            if np.min(np.min(imag))<=0:
-                                warnings.warns("There is Inf values in the Mel spectrogram")
-                                continue
-                            imag=np.log(imag, dtype=np.float32)
-                            mat[0,:,:]=imag
-                            np.save(band+"_"+str(k)+".npy",mat)
+#                     if nf>0:
+#                         mat=np.zeros((1,INTERP_NMELS,TIME_STEPS), dtype=np.float32)
+#                         for k in range(nf):
+#                             frame=signal[init:endi]
+#                             imag=melspectrogram(frame, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
+#                             imag=imag[np.where(imag[:,0]>0)]
+#                             imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
+#                             imag=np.abs(imag)
+#                             init=init+int(TIME_SHIFT)
+#                             endi=endi+int(TIME_SHIFT)
+#                             if np.min(np.min(imag))<=0:
+#                                 warnings.warns("There is Inf values in the Mel spectrogram")
+#                                 continue
+#                             imag=np.log(imag, dtype=np.float32)
+#                             mat[0,:,:]=imag
+#                             np.save(band+"_"+str(k)+".npy",mat)
 
-                            max_curr = np.max(imag)
-                            min_curr = np.min(imag)
-                            if nb==0:
-                                if max_curr > maxBB_en:
-                                    maxBB_en = max_curr
-                                if min_curr < minBB_en:
-                                    minBB_en = min_curr  
-                            elif nb==1:
-                                if max_curr > maxNB_en:
-                                    maxNB_en = max_curr
-                                if min_curr < minNB_en:
-                                    minNB_en = min_curr   
-                    else:
-                        print("WARNING, audio too short", hf[j], len(signal))
-                        countbad+=1
+#                             max_curr = np.max(imag)
+#                             min_curr = np.min(imag)
+#                             if nb==0:
+#                                 if max_curr > maxBB_en:
+#                                     maxBB_en = max_curr
+#                                 if min_curr < minBB_en:
+#                                     minBB_en = min_curr  
+#                             elif nb==1:
+#                                 if max_curr > maxNB_en:
+#                                     maxNB_en = max_curr
+#                                 if min_curr < minNB_en:
+#                                     minNB_en = min_curr   
+#                     else:
+#                         print("WARNING, audio too short", hf[j], len(signal))
+#                         countbad+=1
     try:
         enrgy['Min narrowband Scale'].append(minNB_en)
         enrgy['Max narrowband Scale'].append(maxNB_en)

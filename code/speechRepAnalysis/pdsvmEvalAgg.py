@@ -177,8 +177,9 @@ if __name__=="__main__":
         sys.exit()
     
     total_itrs=config['svm']['iterations']
-    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
-    
+    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'opt_thresh':0,bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    threshes=[]
+                                  
     for o_itr in range(total_itrs):
         pd_files=pdNames
         hc_files=hcNames
@@ -240,7 +241,7 @@ if __name__=="__main__":
             train_acc=0
             opt_thresh=0
             diffs=tr_bin_class[:,0]-tr_bin_class[:,1]
-            for thresh in range(-50,50):
+            for thresh in range(-100,100):
                 thresh=thresh/100
                 g_locs=np.where(diffs>=thresh)
                 l_locs=np.where(diffs<thresh)
@@ -254,7 +255,9 @@ if __name__=="__main__":
                 if acc_curr/yTrain.shape[0]>train_acc:
                     opt_thresh=thresh
                     train_acc=acc_curr/yTrain.shape[0]
-
+                                  
+            threshes.append(opt_thresh)
+            
             bin_class=grid.predict_proba(xTest)
             tst_diffs=bin_class[:,0]-bin_class[:,1]
             tst_g_locs=np.where(tst_diffs>=opt_thresh)
@@ -266,16 +269,15 @@ if __name__=="__main__":
                 test_acc=len(np.where(tst_l_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
                 test_acc+=len(np.where(tst_g_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
             
-            
-    #             avg_precision=average_precision_score(yTest, grid.decision_function(xTest))
             class_report=classification_report(yTest,grid.predict(xTest))
-            results['Data']['train_acc']+=train_acc*(1/(num_pdHc_tests*total_itrs))
-            results['Data']['test_acc']+=test_acc*(1/(num_pdHc_tests*total_itrs))
+            results['Data']['train_acc']+=train_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
+            results['Data']['test_acc']+=test_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
             results['Data']['class_report'][o_itr][itr]=class_report  
             for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
-
+    
+    results['Data']['opt_thresh']=np.median(threshes) 
     results.to_pickle(save_path+model+'_'+rep+"_aggResults.pkl")
 
 

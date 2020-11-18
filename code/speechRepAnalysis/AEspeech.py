@@ -584,7 +584,7 @@ class AEspeech:
 
         mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
         error=torch.mean(mat_error,2).detach().numpy()
-        error=(error-np.mean(error)/np.std(error)
+        error=(error-np.mean(error))/np.std(error)
                
         if return_numpy:
             return error

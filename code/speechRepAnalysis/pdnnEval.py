@@ -139,7 +139,7 @@ if __name__=="__main__":
     nv=config['dnn']['val_spks']#number of validation speakers per split
 
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
-    if rep=='spec':
+    if rep=='narrowband' or rep=='broadband':
         NBF=config['mel_spec']['INTERP_NMELS']
     else:
         NBF=config['wavelet']['NBF']
@@ -158,7 +158,6 @@ if __name__=="__main__":
 #     lr_scores=pd.DataFrame(columns=LRs,index=np.arange(1))
 #     for lrItr,LR in enumerate(LRs):
     
-    threshes=np.arange(-50,50)
     nt=100-(num_pdHc_tests+nv)
     for itr in range(100//num_pdHc_tests):
         trainResultsEpo_curr=[]
@@ -273,7 +272,6 @@ if __name__=="__main__":
                     #standardize data
                     xTrain=(xTrain-np.min(xTrain))/(np.max(xTrain)-np.min(xTrain))
                     yTrain=np.vstack((np.ones((xTrain.shape[0]))*trainIndc,np.ones((xTrain.shape[0]))*trainOpp)).T
-
                     train_data=trainData(torch.FloatTensor(xTrain), torch.FloatTensor(yTrain))
                     train_loader=torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, num_workers=NUM_W)
                     start=time.time()
@@ -320,11 +318,15 @@ if __name__=="__main__":
                 #Iterate through thresholds and choose one that yields best validation acc.
                 #Iterate through all num_tr training patients and classify based off difference in probability of PD/HC
                 max_val_acc=0
-                opt_thresh=0
-                for thresh in range(-100,100):
+                tr_acc=0
+                num_tr=0
+                if epoch==N_EPOCHS-1:
+                    threshes=np.arange(-100,100)
+                else:
+                    threshes=[0]
+                
+                for thresh in threshes:
                     thresh=thresh/100
-                    tr_acc=0
-                    num_tr=0
                     for trainItr in rand_range:   
                         if trainItr in np.concatenate((pdIds,hcIds,valIds)):
                             continue
@@ -380,13 +382,13 @@ if __name__=="__main__":
 
                            #Classification is based off percent of frames classified correctly.
                             if trainIndc==1 :
-                                tr_acc+=len(y_pred_tag[np.where(y_pred_tag>thresh)])/len(y_pred_tag)
+                                tr_acc+=len(y_pred_tag[np.where(y_pred_tag>0)])/len(y_pred_tag)
                             elif trainIndc==0:
-                                tr_acc+=len(y_pred_tag[np.where(y_pred_tag<thresh)])/len(y_pred_tag)
+                                tr_acc+=len(y_pred_tag[np.where(y_pred_tag<0)])/len(y_pred_tag)
                         else:
                             continue
 
-#                     trainResults_epo.iloc[epoch]['train_acc']=tr_acc/num_tr
+    #                     trainResults_epo.iloc[epoch]['train_acc']=tr_acc/num_tr
 
                     if np.mod(epoch,1)==0:
                         #Validate at end of each 1 epochs for nv speakers
@@ -449,24 +451,29 @@ if __name__=="__main__":
                                 val_acc+=len(y_pred_tag[np.where(y_pred_tag<thresh)])/len(y_pred_tag)
                             else:
                                 continue
-                        
+                    
+                    if epoch==(N_EPOCHS-1):
                         if val_acc/num_val>max_val_acc:
                             max_val_acc=val_acc/num_val
                             opt_thresh=thresh
                             trainResults_epo.iloc[epoch]['train_acc']=tr_acc/num_tr
                             trainResults_epo.iloc[epoch]['val_loss']=val_loss/num_val
                             trainResults_epo.iloc[epoch]['val_acc']=val_acc/num_val
-                            print('Train Loss: {:.6f} Train Accuracy: {}\nValidation Loss: {:.6f} Validation Accuracy: {}\n'.format(
-                            train_loss/nt,  
-                            tr_acc/num_tr,
-                            val_loss/num_val,
-                            val_acc/num_val,
-                            ))      
+                    else:
+                        trainResults_epo.iloc[epoch]['train_acc']=tr_acc/num_tr
+                        trainResults_epo.iloc[epoch]['val_loss']=val_loss/num_val
+                        trainResults_epo.iloc[epoch]['val_acc']=val_acc/num_val
+                        
+                print('Train Loss: {:.6f} Train Accuracy: {}\nValidation Loss: {:.6f} Validation Accuracy: {}\n'.format(
+                train_loss/num_tr,  
+                tr_acc/num_tr,
+                val_loss/num_val,
+                val_acc/num_val,
+                ))      
                     
 #                     if val_loss/num_val<=valid_loss_min:
 #                         torch.save(model, save_path+mod+'_'+rep+'_model.pt')
 #                         valid_loss_min = val_loss/num_val
-
             trainResultsEpo_curr.append(trainResults_epo)
 
 
@@ -532,7 +539,9 @@ if __name__=="__main__":
     #                     if indc==0:
     #                         if (len(y_pred_tag[np.where(y_pred_tag<0)]) >= len(y_pred_tag[np.where(y_pred_tag>0)])):
     #                             test_acc+=1
-    
+                    
+                    if len(y_pred_tag)>0:
+                        num_tst+=1
                    #Classification is based off percent of frames classified correctly.
                     if indc==1 :
                         test_acc+=len(y_pred_tag[np.where(y_pred_tag>opt_thresh)])/len(y_pred_tag)
@@ -542,7 +551,6 @@ if __name__=="__main__":
                         continue
                     #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.
                     testResults_curr[utter]['tstSpk_data'][tstId]=y_test_pred.cpu().detach().numpy()
-
 
             #Store and report loss and accuracy for batch of test speakers.            
             testResults_curr[utter]['test_loss'],testResults_curr[utter]['test_acc']=test_loss/num_tst,test_acc/num_tst

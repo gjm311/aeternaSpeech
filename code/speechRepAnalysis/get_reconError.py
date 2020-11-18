@@ -10,7 +10,7 @@ import numpy as np
 from AEspeech import AEspeech
 import json
 import argparse
-
+import pdb
 from librosa.feature import melspectrogram
 
 import toolbox.traintestsplit as tts
@@ -50,11 +50,9 @@ if __name__ == "__main__":
     save_path=save_path+mod+'_'+rep+'.pickle'
     
     if rep=='wvlt':
-        freqs=config['wavelet']['NBF']
-    elif rep=='narrowband':
-        freqs=config['mel_spec']['NB_NMELS'] 
-    elif rep=='broadband':
-        freqs=config['mel_spec']['BB_NMELS'] 
+        n_freqs=config['wavelet']['NBF']
+    else:
+        n_freqs=config['mel_spec']['INTERP_NMELS'] 
     
     data={spk:{'means':[], 'stds':[]} for spk in ['pd','hc']}
     utters= os.listdir(PATH+sys.argv[3])
@@ -69,8 +67,8 @@ if __name__ == "__main__":
             wav_files=[name for name in dirNames if '.wav' in name]
 
             num_files=len(wav_files)
-            data_curr_means=np.zeros((num_files,freqs))
-            data_curr_sds=np.zeros((num_files,freqs))
+            data_curr_means=np.zeros((num_files,n_freqs))
+            data_curr_sds=np.zeros((num_files,n_freqs))
 
             for ii,wav_file in enumerate(wav_files):
                 wav_file=path_audio+wav_file
@@ -79,9 +77,9 @@ if __name__ == "__main__":
                 # for mod in models:
                 aespeech=AEspeech(model=mod,units=unit,rep=rep)
                 if rep=='broadband' or rep=='narrowband':                  
-                    mat=aespeech.compute_spectrograms(wav_file)
+                    mat=aespeech.compute_spectrograms(wav_file,plosives_only=0)
                 if rep=='wvlt':
-                    mat,freqs=aespeech.compute_cwt(wav_file)
+                    mat,freqs=aespeech.compute_cwt(wav_file,plosives_only=0)
 
                 if torch.cuda.is_available():
                     mat=mat.cuda()
@@ -89,9 +87,9 @@ if __name__ == "__main__":
                 to=aespeech.destandard(to)
                 
                 mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
-                error=torch.mean(mat_error,2).detach().numpy()
-                error=(error-error.mean())/error.std()
-                    
+                error=torch.mean(mat_error,2).cpu().detach().numpy()
+#                 error=torch.mean(mat_error,2).detach().numpy()
+#                 error=(error-error.mean())/error.std()
                 data_curr_means[ii,:]=np.mean(error,axis=0)
                 data_curr_sds[ii,:]=np.std(error,axis=0)
                 
@@ -99,8 +97,10 @@ if __name__ == "__main__":
                 data[spk]['means']=data_curr_means
                 data[spk]['stds']=data_curr_sds
             else:
-                data[spk]['means']=np.concatenate((data[spk]['means'],data_curr),axis=0)
-                data[spk]['stds']=np.concatenate((data[spk]['stds'],data_curr),axis=0)
+                data[spk]['means']=np.concatenate((data[spk]['means'],data_curr_means
+),axis=0)
+                data[spk]['stds']=np.concatenate((data[spk]['stds'],data_curr_sds
+),axis=0)
                
     with open(save_path, 'wb') as handle:
         pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)

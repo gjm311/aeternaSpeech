@@ -91,7 +91,7 @@ if __name__=="__main__":
 
     PATH=os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv)!=4:
-        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/<UTTER>/'
     
@@ -99,21 +99,15 @@ if __name__=="__main__":
     if sys.argv[1] in MODELS:
         mod=sys.argv[1]
     else:
-        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <pd path>")
         sys.exit()
-    
-    if sys.argv[2] in REPS:
-        rep=sys.argv[2]
-    else:
-        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
-        sys.exit()    
+
+    if sys.argv[2][0] !='/':
+        sys.argv[2] = '/'+sys.argv[2]
+    if sys.argv[2][-1] !='/':
+        sys.argv[2] = sys.argv[3]+'/'
         
-    if sys.argv[3][0] !='/':
-        sys.argv[3] = '/'+sys.argv[3]
-    if sys.argv[3][-1] !='/':
-        sys.argv[3] = sys.argv[3]+'/'
-        
-    
+    reps=['broadband','narrowband']
     
     LR=config['dnn']['LR']
     BATCH_SIZE=config['dnn']['BATCH_SIZE']
@@ -124,12 +118,9 @@ if __name__=="__main__":
 
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
 
-    if rep=='broadband' or rep=='narrowband':
-        NBF=config['mel_spec']['INTERP_NMELS']
-    elif rep=='wvlt':
-        NBF=config['wavelet']['NBF']
-
-        
+    
+    NBF=config['mel_spec']['INTERP_NMELS']*2
+    
     save_path=PATH+"/pdSpanish/classResults/dnn/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -149,36 +140,37 @@ if __name__=="__main__":
     hcIds=np.arange(50,100)
     spkDict={spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])}
     for u_idx,utter in enumerate(UTTERS):
-        pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
-        hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
-        pdNames=[name for name in os.listdir(pd_path) if '.wav' in name]
-        hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
-        pdNames.sort()
-        hcNames.sort()
-        spks=pdNames+hcNames
-        num_spks=len(spks)
-        num_pd=len(pdNames)
-        num_hc=len(hcNames)
-        pdFeats=getFeats(mod,UNITS,rep,pd_path,utter,'pd')
-        hcFeats=getFeats(mod,UNITS,rep,hc_path,utter,'hc')
-        pdAll=np.unique(pdFeats['wav_file'])
-        hcAll=np.unique(hcFeats['wav_file'])
-                
-        for p in pdIds:
-            pdBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[p])]
-            pdErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[p])]
-            if u_idx==0:
-                spkDict['pd'][p]=np.concatenate((pdBns,pdErrs),axis=1)
-            else:
-                spkDict['pd'][p]=np.concatenate((spkDict['pd'][p],np.concatenate((pdBns,pdErrs),axis=1)),axis=0)
-            
-        for h in hcIds:
-            hcBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[h])]
-            hcErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[h])]
-            if u_idx==0:
-                spkDict['hc'][h]=np.concatenate((hcBns,hcErrs),axis=1)
-            else:
-                spkDict['hc'][h]=np.concatenate((spkDict['hc'][h],np.concatenate((hcBns,hcErrs),axis=1)),axis=0)
+        for rIdx,rep in enumerate(reps):
+            pd_path=PATH+sys.argv[2]+'/'+utter+"/pd/"
+            hc_path=PATH+sys.argv[2]+'/'+utter+"/hc/"   
+            pdNames=[name for name in os.listdir(pd_path) if '.wav' in name]
+            hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
+            pdNames.sort()
+            hcNames.sort()
+            spks=pdNames+hcNames
+            num_spks=len(spks)
+            num_pd=len(pdNames)
+            num_hc=len(hcNames)
+            pdFeats=getFeats(mod,UNITS,rep,pd_path,utter,'pd')
+            hcFeats=getFeats(mod,UNITS,rep,hc_path,utter,'hc')
+            pdAll=np.unique(pdFeats['wav_file'])
+            hcAll=np.unique(hcFeats['wav_file'])
+
+            for p in pdIds:
+                pdBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[p])]
+                pdErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[p])]
+                if u_idx==0 and rIdx==0:
+                    spkDict['pd'][p]=np.concatenate((pdBns,pdErrs),axis=1)
+                else:
+                    spkDict['pd'][p]=np.concatenate((spkDict['pd'][p],np.concatenate((pdBns,pdErrs),axis=1)),axis=0)
+
+            for h in hcIds:
+                hcBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[h])]
+                hcErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[h])]
+                if u_idx==0 and rIdx==0:
+                    spkDict['hc'][h]=np.concatenate((hcBns,hcErrs),axis=1)
+                else:
+                    spkDict['hc'][h]=np.concatenate((spkDict['hc'][h],np.concatenate((hcBns,hcErrs),axis=1)),axis=0)
         
     #split data into training and test with multiple iterations (evenly split PD:HC)
     pd_files=pdNames
@@ -543,8 +535,8 @@ if __name__=="__main__":
 #         lr_scores.iloc[0][LRs[lrItr]]=lr_score
 #         lr_scores.to_csv(save_path+mod+'_'+rep+"lrResults.csv")
 
-    trainResults.to_pickle(save_path+mod+'_'+rep+"_aggTrainResults.pkl")
-    testResults.to_pickle(save_path+mod+'_'+rep+"_aggTestResults.pkl")
+    trainResults.to_pickle(save_path+mod+'earlyFusion_TrainResults.pkl')
+    testResults.to_pickle(save_path+mod+'_earlyFusionTestResults.pkl')
 
 
 

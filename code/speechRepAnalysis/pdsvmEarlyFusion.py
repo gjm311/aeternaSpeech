@@ -95,13 +95,16 @@ if __name__=="__main__":
 #     pd_mfdas=mfdas[0:50]
 #     hc_mfdas=mfdas[50:]
     
-    reps=['narrowband','broadband']
+#     reps=['narrowband','broadband']
+    reps=['narrowband','broadband','wvlt']
     num_reps=len(reps)
     
-    num_feats=num_reps*(config['mel_spec']['INTERP_NMELS']+UNITS)
-                
+    if 'wvlt' in reps:
+        num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)+config['wavelet']['NBF']+UNITS
+    else:
+        num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)
+        
     data={utter:{} for utter in UTTERS}
-    
     num_utters=len(UTTERS)
     pds=np.zeros((50*num_utters,num_feats,4))
     hcs=np.zeros((50*num_utters,num_feats,4))
@@ -124,7 +127,10 @@ if __name__=="__main__":
             hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
             pdAll=np.unique(pdFeats['wav_file'])
             hcAll=np.unique(hcFeats['wav_file'])
-            
+            if rep=='wvlt':
+                cntr=config['wavelet']['NBF']+UNITS
+            else:
+                cntr=config['mel_spec']['INTERP_NMELS']+UNITS
 
             #getting bottle neck features and reconstruction error for training
             for ii,tr in enumerate(pdAll):
@@ -133,14 +139,14 @@ if __name__=="__main__":
                 pdTrBns=np.array([np.mean(pdTrBns,axis=0),np.std(pdTrBns,axis=0),skew(pdTrBns,axis=0),kurtosis(pdTrBns,axis=0)])
                 pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
                 pdTrErrs=np.array([np.mean(pdTrErrs,axis=0),np.std(pdTrErrs,axis=0),skew(pdTrErrs,axis=0),kurtosis(pdTrErrs,axis=0)])
-                pds[(ii*num_utters)+uIdx,rIdx*num_feats//num_reps:(rIdx+1)*num_feats//num_reps,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
+                pds[(ii*num_utters)+uIdx,rIdx*cntr:(rIdx+1)*cntr,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
             for ii,tr in enumerate(hcAll):
                 tritr=hcIds[ii]
                 hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
                 hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
                 hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
                 hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
-                hcs[(ii*num_utters)+uIdx,rIdx*num_feats//num_reps:(rIdx+1)*num_feats//num_reps,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                hcs[(ii*num_utters)+uIdx,rIdx*cntr:(rIdx+1)*cntr,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
                 
     pdXAll=np.reshape(pds,(pds.shape[0],num_feats*4))
     hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
@@ -267,4 +273,8 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
     
     results['Data']['opt_thresh']=np.median(threshes) 
-    results.to_pickle(save_path+model+"_earlyFusionResults.pkl")
+    
+    if 'wvlt' in reps:
+        results.to_pickle(save_path+model+"_wvlt_earlyFusionResults.pkl")
+    else:
+        results.to_pickle(save_path+model+"_earlyFusionResults.pkl")

@@ -6,7 +6,7 @@
         },
     
     "wavelet": {
-        "SNIP_LEN":50,
+        "SNIP_LEN":500,
         "NBF":64,
         "TIME_STEPS":256,
         "OVRLP":0.5
@@ -54,7 +54,7 @@
         "dropout": 0.5,
         "BATCH_SIZE": 250,
         "NUM_W": 0,
-        "N_EPOCHS": 1000,
+        "N_EPOCHS": 125,
         "LR": 10e-5,
         "tst_spks":20,
         "val_spks":20

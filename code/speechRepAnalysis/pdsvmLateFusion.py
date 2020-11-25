@@ -13,6 +13,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.model_selection import GridSearchCV
 import joblib
 from sklearn.preprocessing import StandardScaler
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.decomposition import PCA
 from sklearn.metrics import make_scorer
 from sklearn.metrics import roc_curve, auc
@@ -166,7 +167,7 @@ if __name__=="__main__":
         sys.exit()
     
     total_itrs=config['svm']['iterations']
-    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'opt_thresh':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
     threshes=np.zeros((nreps,total_itrs*int(num_spks/num_pdHc_tests)))
                                   
     for o_itr in range(total_itrs):
@@ -183,6 +184,7 @@ if __name__=="__main__":
             hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
                                   
             diffs=np.zeros((nreps,(num_spks-num_pdHc_tests)*num_utters))
+            tst_diffs=np.zeros((nreps,(num_pdHc_tests)*num_utters))
             for nrep,(pca_xAll,ncs) in enumerate(zip(pca_xAlls,rncs)):
                 pdTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
                 hcTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
@@ -206,11 +208,12 @@ if __name__=="__main__":
                 pdYTrain=np.ones((pdTrain.shape[0])).T
                 hcYTrain=np.zeros((hcTrain.shape[0])).T
                 yTrain=np.concatenate((pdYTrain,hcYTrain),axis=0)
+                
                 xTest=np.concatenate((pdTest,hcTest),axis=0)
                 pdYTest=np.ones((pdTest.shape[0])).T
                 hcYTest=np.zeros((pdTest.shape[0])).T
-                yTest=np.concatenate((pdYTest,hcYTest),axis=0)
-
+                yTest=np.concatenate((pdYTest,hcYTest),axis=0)               
+                
                 param_grid = [
                   {'C':np.logspace(0,5,25), 'gamma':np.logspace(-8,-4,25), 'degree':[1],'kernel': ['rbf']},
                     ]
@@ -224,53 +227,30 @@ if __name__=="__main__":
                 grid.fit(xTrain,yTrain)
                 
                 tr_bin_class=grid.predict_proba(xTrain)
-                train_acc=0
-                opt_thresh=0
                 diffs[nrep,:]=tr_bin_class[:,0]-tr_bin_class[:,1]
-                for thresh in range(-100,100):
-                    thresh=thresh/100
-                    g_locs=np.where(diffs[nrep,:]>=thresh)
-                    l_locs=np.where(diffs[nrep,:]<thresh)
-                    if sum(diffs[nrep,0:pdYTrain.shape[0]])<0:
-                        acc_curr=len(np.where(l_locs[0]<pdYTrain.shape[0])[0])
-                        acc_curr+=len(np.where(g_locs[0]>=pdYTrain.shape[0])[0])
-                    else:
-                        acc_curr=len(np.where(l_locs[0]>=pdYTrain.shape[0])[0])
-                        acc_curr+=len(np.where(g_locs[0]<pdYTrain.shape[0])[0])
-
-                    if acc_curr/yTrain.shape[0]>train_acc:
-                        opt_thresh=thresh
-                        train_acc=acc_curr/yTrain.shape[0]
-
-                threshes[nrep,o_itr*int(num_spks/num_pdHc_tests)+itr]=opt_thresh
+                tst_bin_class=grid.predict_proba(xTest)
+                tst_diffs[nrep,:]=tst_bin_class[:,0]-tst_bin_class[:,1]
             
             
             diff_tpls=tuple((x1,x2) for x1,x2 in zip(diffs[0,:],diffs[1,:]))
-            clf = SGDClassifier(loss="hinge", penalty="l2", max_iter=5)
-            clf.fit(x_tpls, yTrain)
-            clf.predict(x_tpls)
-            pdb.set_trace()
-            
-            bin_class=grid.predict_proba(xTest)
-            tst_diffs=bin_class[:,0]-bin_class[:,1]
-            tst_g_locs=np.where(tst_diffs>=opt_thresh)
-            tst_l_locs=np.where(tst_diffs<opt_thresh)
-            if sum(diffs[nrep,0:pdYTrain.shape[0]])<0:
-                test_acc=len(np.where(tst_l_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
-                test_acc+=len(np.where(tst_g_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
-            else:
-                test_acc=len(np.where(tst_l_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
-                test_acc+=len(np.where(tst_g_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+            clf = SGDClassifier(loss="hinge", penalty="l2")
+            clf.fit(diff_tpls, yTrain)
+            tr_acc=sum(clf.predict(diff_tpls[0:len(pdYTrain)]))+sum(np.mod(clf.predict(diff_tpls)[len(pdYTrain):]+1,2))/len(yTrain)
+            calibrator=CalibratedClassifierCV(clf, cv='prefit')
+            modCal=calibrator.fit(diff_tpls, yTrain)
+
+            tst_diff_tpls=tuple((x1,x2) for x1,x2 in zip(tst_diffs[0,:],tst_diffs[1,:]))
+            tst_acc=sum(clf.predict(tst_diff_tpls[0:len(pdYTest)]))+sum(np.mod(clf.predict(tst_diff_tpls)[len(pdYTest):]+1,2))/len(yTest)
+            bin_class=modCal.predict_proba(tst_diff_tpls)
             
             class_report=classification_report(yTest,grid.predict(xTest))
-            results['Data']['train_acc']+=train_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
-            results['Data']['test_acc']+=test_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
+            results['Data']['train_acc']+=tr_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
+            results['Data']['test_acc']+=tst_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
             results['Data']['class_report'][o_itr][itr]=class_report  
             for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
     
-    results['Data']['opt_thresh']=np.median(threshes) 
     results.to_pickle(save_path+model+'_lateFusionResults.pkl')
 
 

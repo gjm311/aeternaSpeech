@@ -135,7 +135,7 @@ if __name__=="__main__":
         os.makedirs(save_path)
     
     ntr=100-(num_pdHc_tests+nv)
-    testResults=pd.DataFrame({splItr:{'test_loss':0, 'test_acc':0, 'tstSpk_data':{}} for splItr in range(num_pdHc_tests)})     
+    testResults=pd.DataFrame({splItr:{'test_loss':0, 'test_acc':0, 'opt_thresh':0, 'tstSpk_data':{}} for splItr in range(100//num_pdHc_tests)})     
     train_res=[]
         
     #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
@@ -447,7 +447,8 @@ if __name__=="__main__":
             val_loss/num_val,
             val_acc/num_val,
             ))      
-
+           
+            
         #AFTER MODEL TRAINED (FOR ALL SPEAKERS AND OVER NUM_EPOCHS), TEST MODEL ON LEFT OUT SPEAKERS  
         test_loss=0.0
         test_acc=0.0
@@ -520,6 +521,7 @@ if __name__=="__main__":
 
         #Store and report loss and accuracy for batch of test speakers.            
         testResults[itr]['test_loss'],testResults[itr]['test_acc']=test_loss/num_pdHc_tests,test_acc/num_pdHc_tests
+        testResults[itr]['opt_thresh']=opt_thresh
         print('\nTest Loss: {:.3f} \tTest Acc: {:.3f} '.format(
                     test_loss/num_pdHc_tests,
                     test_acc/num_pdHc_tests

@@ -90,7 +90,7 @@ class testData(data.Dataset):
 if __name__=="__main__":
 
     PATH=os.path.dirname(os.path.abspath(__file__))
-    if len(sys.argv)!=4:
+    if len(sys.argv)!=3:
         print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/<UTTER>/'
@@ -119,14 +119,14 @@ if __name__=="__main__":
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
 
     
-    NBF=config['mel_spec']['INTERP_NMELS']*2
+    NBF=config['mel_spec']['INTERP_NMELS']
     
     save_path=PATH+"/pdSpanish/classResults/dnn/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
     ntr=100-(num_pdHc_tests+nv)
-    testResults=pd.DataFrame({splItr:{'test_loss':0, 'test_acc':0, 'tstSpk_data':{}} for splItr in range(num_pdHc_tests)})     
+    testResults=pd.DataFrame({splItr:{'test_loss':0, 'test_acc':0, 'tstSpk_data':{}} for splItr in range(100//num_pdHc_tests)})     
     train_res=[]
         
     #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
@@ -171,7 +171,8 @@ if __name__=="__main__":
                     spkDict['hc'][h]=np.concatenate((hcBns,hcErrs),axis=1)
                 else:
                     spkDict['hc'][h]=np.concatenate((spkDict['hc'][h],np.concatenate((hcBns,hcErrs),axis=1)),axis=0)
-        
+    pdb.set_trace()
+    
     #split data into training and test with multiple iterations (evenly split PD:HC)
     pd_files=pdNames
     hc_files=hcNames
@@ -535,8 +536,8 @@ if __name__=="__main__":
 #         lr_scores.iloc[0][LRs[lrItr]]=lr_score
 #         lr_scores.to_csv(save_path+mod+'_'+rep+"lrResults.csv")
 
-    trainResults.to_pickle(save_path+mod+'earlyFusion_TrainResults.pkl')
-    testResults.to_pickle(save_path+mod+'_earlyFusionTestResults.pkl')
+    trainResults.to_pickle(save_path+mod+'_earlyFusion_trainResults.pkl')
+    testResults.to_pickle(save_path+mod+'_earlyFusion_testResults.pkl')
 
 
 

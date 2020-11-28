@@ -5,6 +5,7 @@ import pandas as pd
 import pickle
 import random
 import pdb
+import itertools
 from AEspeech import AEspeech
 from scipy.stats import kurtosis, skew
 from sklearn import svm, datasets
@@ -34,6 +35,7 @@ config = json.loads(data)
 UNITS=config['general']['UNITS']
 UTTERS=['pataka','kakaka','pakata','papapa','petaka','tatata']
 MODELS=["CAE","RAE","ALL"]
+REPS=['narrowband','broadband','wvlt']
 
 
 def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
@@ -71,39 +73,51 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     
 if __name__=="__main__":
 
-    if len(sys.argv)!=3:
-        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <pd path>")
+    if len(sys.argv)!=4:
+        print("python pdsvmLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/'    
     
     if sys.argv[1] in MODELS:
         model=sys.argv[1]
     else:
-        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <pd path>")
+        print("python pdsvmLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
         sys.exit() 
-          
-    if sys.argv[2][0] !='/':
-        sys.argv[2] = '/'+sys.argv[2]
-    if sys.argv[2][-1] !='/':
-        sys.argv[2] = sys.argv[2]+'/'
+    
+    if int(sys.argv[2]) not in [2,3]:
+        print("python pdsvmLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
+        sys.exit()
+    else:
+        nreps=int(sys.argv[2])
+    
+    if sys.argv[3][0] !='/':
+        sys.argv[3] = '/'+sys.argv[2]
+    if sys.argv[3][-1] !='/':
+        sys.argv[3] = sys.argv[2]+'/'
         
     save_path=PATH+"/pdSpanish/classResults/svm/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-        
     
-    reps=['narrowband','broadband']
-    nreps=len(reps)
-    num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
+    reps=REPS[:nreps]   
     num_utters=len(UTTERS)
+    
+    mfda_path=PATH+"/pdSpanish/"
+    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
+    pd_mfdas=mfdas[0:50]
+    hc_mfdas=mfdas[50:]
 
     for nrep,rep in enumerate(reps):
+        if rep=='wvlt':
+            num_feats=config['wavelet']['NBF']+UNITS
+        else:
+            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
         pds=np.zeros((50*num_utters,num_feats,4))
         hcs=np.zeros((50*num_utters,num_feats,4))
         for uIdx,utter in enumerate(UTTERS):
             curr_best=0
-            pd_path=PATH+sys.argv[2]+'/'+utter+"/pd/"
-            hc_path=PATH+sys.argv[2]+'/'+utter+"/hc/"   
+            pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
+            hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
             pdNames=[name for name in os.listdir(pd_path) if '.wav' in name]
             hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
             pdNames.sort()
@@ -144,17 +158,25 @@ if __name__=="__main__":
         pca.fit_transform(st_xAll)
         variance = pca.explained_variance_ratio_ #calculate variance ratios
         var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
-        if nrep==0:
+        if rep=='narrowband':
             nb_ncs=np.count_nonzero(var<90)
             pca = PCA(n_components=nb_ncs)
             nb_pca_xAll=pca.fit_transform(st_xAll)
-        else:
+        elif rep=='broadband':
             bb_ncs=np.count_nonzero(var<90)
             pca = PCA(n_components=bb_ncs)
             bb_pca_xAll=pca.fit_transform(st_xAll)
-            
-    rncs=[nb_ncs,bb_ncs]
-    pca_xAlls=[nb_pca_xAll,bb_pca_xAll]
+        elif rep=='wvlt':
+            wvlt_ncs=np.count_nonzero(var<90)
+            pca = PCA(n_components=wvlt_ncs)
+            wvlt_pca_xAll=pca.fit_transform(st_xAll)
+    
+    if 'wvlt' in reps:
+        rncs=[nb_ncs,bb_ncs,wvlt_ncs]
+        pca_xAlls=[nb_pca_xAll,bb_pca_xAll,wvlt_pca_xAll]
+    else:
+        rncs=[nb_ncs,bb_ncs]
+        pca_xAlls=[nb_pca_xAll,bb_pca_xAll]
     
     #split data into training and test with multiple iterations
     num_pdHc_tests=config['svm']['tst_spks']#must be even (same # of test pds and hcs per iter)
@@ -167,12 +189,13 @@ if __name__=="__main__":
         sys.exit()
     
     total_itrs=config['svm']['iterations']
-    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0, 'mFDA_spear_corr':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
     threshes=np.zeros((nreps,total_itrs*int(num_spks/num_pdHc_tests)))
                                   
     for o_itr in range(total_itrs):
         pd_files=pdNames
         hc_files=hcNames
+        predictions=pd.DataFrame(index=np.arange(100))
         
         for itr in range(int(num_spks/num_pdHc_tests)):
             pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),int(num_pdHc_tests/2))]
@@ -185,6 +208,9 @@ if __name__=="__main__":
                                   
             diffs=np.zeros((nreps,(num_spks-num_pdHc_tests)*num_utters))
             tst_diffs=np.zeros((nreps,(num_pdHc_tests)*num_utters))
+            preds=np.zeros((nreps,(num_spks-num_pdHc_tests)*num_utters))
+            tst_preds=np.zeros((nreps,(num_pdHc_tests)*num_utters))
+            
             for nrep,(pca_xAll,ncs) in enumerate(zip(pca_xAlls,rncs)):
                 pdTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
                 hcTest=np.zeros(((num_pdHc_tests//2)*num_utters,ncs))
@@ -212,7 +238,10 @@ if __name__=="__main__":
                 xTest=np.concatenate((pdTest,hcTest),axis=0)
                 pdYTest=np.ones((pdTest.shape[0])).T
                 hcYTest=np.zeros((pdTest.shape[0])).T
-                yTest=np.concatenate((pdYTest,hcYTest),axis=0)               
+                yTest=np.concatenate((pdYTest,hcYTest),axis=0)
+                
+                mfda_yTrain=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdTrainIds+hcTrainIds]))
+                mfda_yTest=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdIds+hcIds]))
                 
                 param_grid = [
                   {'C':np.logspace(0,5,25), 'gamma':np.logspace(-8,-4,25), 'degree':[1],'kernel': ['rbf']},
@@ -220,11 +249,20 @@ if __name__=="__main__":
 
                 cv = StratifiedShuffleSplit(n_splits=4, test_size=0.2, random_state=42)
                 grid = GridSearchCV(SVC(probability=True), param_grid=param_grid, cv=cv)
+                mfda_grid = GridSearchCV(SVC(probability=True), param_grid=param_grid, cv=cv)
                 grid.fit(xTrain, yTrain)
+                mfda_grid.fit(xTrain,mfda_yTrain)
                 grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
                                     kernel=grid.best_params_['kernel'], probability=True)
+                
+            mfda_grid=svm.SVC(C=mfda_grid.best_params_['C'],degree=mfda_grid.best_params_['degree'],gamma=mfda_grid.best_params_['gamma'],
+                                    kernel=mfda_grid.best_params_['kernel'], probability=True)
 
                 grid.fit(xTrain,yTrain)
+                mfda_grid.fit(xTrain,yTrain)
+                
+                preds[nrep,:]=mfda_grid.predict(xTrain,yTrain)
+                preds[nrep,:]=mfda_grid.predict(xTest,yTest)
                 
                 tr_bin_class=grid.predict_proba(xTrain)
                 diffs[nrep,:]=tr_bin_class[:,0]-tr_bin_class[:,1]
@@ -243,6 +281,15 @@ if __name__=="__main__":
             tst_acc=sum(clf.predict(tst_diff_tpls[0:len(pdYTest)]))+sum(np.mod(clf.predict(tst_diff_tpls)[len(pdYTest):]+1,2))/len(yTest)
             bin_class=modCal.predict_proba(tst_diff_tpls)
             
+            pred_tpls=tuple((x1,x2) for x1,x2 in zip(preds[0,:],preds[1,:]))
+            mfda_clf = SGDClassifier(loss="hinge", penalty="l2")
+            mfda_clf.fit(pred_tpls, mfda_yTrain)
+        
+            tst_pred_tpls=tuple((x1,x2) for x1,x2 in zip(tst_diffs[0,:],tst_preds[1,:]))
+            #predict speaker mfdas for each utterance (will average over after predictions of all spks made).
+            for idItr,curr_id in enumerate(pdIds+hcIds):
+                predictions['predictions'][curr_id]=mfda_clf.predict(tst_pred_tpls[idItr])
+
             class_report=classification_report(yTest,grid.predict(xTest))
             results['Data']['train_acc']+=tr_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
             results['Data']['test_acc']+=tst_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
@@ -250,8 +297,13 @@ if __name__=="__main__":
             for cpi,(pdId,hcId) in enumerate(zip(pdIds,hcIds)):          
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
+        
+        results['Data']['mFDA_spear_corr']+=np.spearmanr(predictions['predictions'].values,mfdas)/total_itrs     
     
-    results.to_pickle(save_path+model+'_lateFusionResults.pkl')
+    if 'wvlt' in reps:
+        results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")
+    else:
+        results.to_pickle(save_path+model+"_lateFusionResults.pkl")
 
 
 

@@ -171,7 +171,6 @@ if __name__=="__main__":
                     spkDict['hc'][h]=np.concatenate((hcBns,hcErrs),axis=1)
                 else:
                     spkDict['hc'][h]=np.concatenate((spkDict['hc'][h],np.concatenate((hcBns,hcErrs),axis=1)),axis=0)
-    pdb.set_trace()
     
     #split data into training and test with multiple iterations (evenly split PD:HC)
     pd_files=pdNames

@@ -306,10 +306,8 @@ if __name__=="__main__":
                         train_losses[rtritr]+=train_loss_curr/len(train_loader.dataset)                           
 
             #Record train loss at end of each epoch (divide by number of train patients - ntr).
-            if rep=='broadband':
-                trainResults_epo.iloc[epoch]['bb_train_loss']=train_losses[0]/ntr
-            elif rep=='narrowband':
-                trainResults_epo.iloc[epoch]['nb_train_loss']=train_losses[1]/ntr
+            trainResults_epo.iloc[epoch]['bb_train_loss']=train_losses[0]/ntr
+            trainResults_epo.iloc[epoch]['nb_train_loss']=train_losses[1]/ntr
             
             if np.mod(epoch,125)==0:
                 #Iterate through thresholds and choose one that yields best validation acc.
@@ -522,7 +520,8 @@ if __name__=="__main__":
         preds=[]
         pred_truths=[]
         for scount,key in enumerate(tags.keys()):
-            testResults[itr]['tstSpk_data'][key]=modCal.predict_proba(tags[key])
+            testResults[itr]['tstSpk_data'][key]=np.fliplr(modCal.predict_proba(tags[key]))
+            
             if scount==0:
                 preds=modCal.predict_proba(tags[key])
                 if key<num_pd:

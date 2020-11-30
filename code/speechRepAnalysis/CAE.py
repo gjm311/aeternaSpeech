@@ -2,6 +2,7 @@ import torch
 from torch import nn, optim
 import torch.nn.functional as F
 import numpy as np
+import pdb
 
 
 
@@ -24,7 +25,7 @@ class CAEenc(nn.Module):
         x =F.leaky_relu((self.bn1(self.pool(self.conv1(x)))))
         x =F.leaky_relu((self.bn2(self.pool(self.conv2(x)))))
         x =F.leaky_relu((self.bn3(self.pool(self.conv3(x)))))
-        x =F.leaky_relu((self.bn4(self.pool(self.conv4(x)))))
+        x =F.leaky_relu((self.bn4(self.pool(self.conv4(torch.cat((x,x),dim=0))))))
         x = x.view(x.size(0), -1)
         x = self.linear(x)
         return x

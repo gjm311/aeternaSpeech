@@ -13,6 +13,7 @@ from CAE import CAEn
 from RAE import RAEn
 from wvCAE import wvCAEn
 from wvRAE import wvRAEn
+from mcCAE import mcCAEn
 from scipy.io.wavfile import read
 import scipy
 import torch
@@ -161,6 +162,13 @@ class AEspeech:
                     self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt', map_location='cpu')['model'])
             elif rep=='wvlt':
                 self.AE=wvCAEn(units)
+                if torch.cuda.is_available():
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt')['model'])
+                    self.AE.cuda()
+                else:
+                    self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt', map_location='cpu')['model'])
+            elif rep=='mc_fuse':
+                self.AE=mcCAEn(units)
                 if torch.cuda.is_available():
                     self.AE.load_state_dict(torch.load(pt_path+"/"+str(units)+'_CAE.pt')['model'])
                     self.AE.cuda()

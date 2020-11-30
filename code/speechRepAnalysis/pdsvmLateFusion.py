@@ -7,6 +7,7 @@ import random
 import pdb
 import itertools
 from AEspeech import AEspeech
+from scipy import stats
 from scipy.stats import kurtosis, skew
 from sklearn import svm, datasets
 from sklearn.svm import SVC
@@ -189,13 +190,13 @@ if __name__=="__main__":
         sys.exit()
     
     total_itrs=config['svm']['iterations']
-    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0, 'mFDA_spear_corr':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0, 'mFDA_spear_corr':{itr:{idx:{utter:0 for utter in UTTERS} for idx in np.arange(100)} for itr in range(total_itrs)},'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
     threshes=np.zeros((nreps,total_itrs*int(num_spks/num_pdHc_tests)))
                                   
     for o_itr in range(total_itrs):
         pd_files=pdNames
         hc_files=hcNames
-        predictions=pd.DataFrame(index=np.arange(100))
+        predictions=pd.DataFrame(index=np.arange(100), columns=['predictions'])
         
         for itr in range(int(num_spks/num_pdHc_tests)):
             pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),int(num_pdHc_tests/2))]
@@ -240,6 +241,7 @@ if __name__=="__main__":
                 hcYTest=np.zeros((pdTest.shape[0])).T
                 yTest=np.concatenate((pdYTest,hcYTest),axis=0)
                 
+                #repeat m-fda score of a given speaker for every segment/utterance associated with said speaker.
                 mfda_yTrain=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdTrainIds+hcTrainIds]))
                 mfda_yTest=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdIds+hcIds]))
                 
@@ -254,15 +256,14 @@ if __name__=="__main__":
                 mfda_grid.fit(xTrain,mfda_yTrain)
                 grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
                                     kernel=grid.best_params_['kernel'], probability=True)
-                
-            mfda_grid=svm.SVC(C=mfda_grid.best_params_['C'],degree=mfda_grid.best_params_['degree'],gamma=mfda_grid.best_params_['gamma'],
-                                    kernel=mfda_grid.best_params_['kernel'], probability=True)
+                mfda_grid=svm.SVC(C=mfda_grid.best_params_['C'],degree=mfda_grid.best_params_['degree'],gamma=mfda_grid.best_params_['gamma'],
+                                  kernel=mfda_grid.best_params_['kernel'], probability=True)
 
                 grid.fit(xTrain,yTrain)
-                mfda_grid.fit(xTrain,yTrain)
+                mfda_grid.fit(xTrain,mfda_yTrain)
                 
-                preds[nrep,:]=mfda_grid.predict(xTrain,yTrain)
-                preds[nrep,:]=mfda_grid.predict(xTest,yTest)
+                preds[nrep,:]=mfda_grid.predict(xTrain,mfda_yTrain)
+                tst_preds[nrep,:]=mfda_grid.predict(xTest,mfda_yTest)
                 
                 tr_bin_class=grid.predict_proba(xTrain)
                 diffs[nrep,:]=tr_bin_class[:,0]-tr_bin_class[:,1]
@@ -285,10 +286,11 @@ if __name__=="__main__":
             mfda_clf = SGDClassifier(loss="hinge", penalty="l2")
             mfda_clf.fit(pred_tpls, mfda_yTrain)
         
-            tst_pred_tpls=tuple((x1,x2) for x1,x2 in zip(tst_diffs[0,:],tst_preds[1,:]))
+            tst_pred_tpls=tuple((x1,x2) for x1,x2 in zip(tst_preds[0,:],tst_preds[1,:]))
             #predict speaker mfdas for each utterance (will average over after predictions of all spks made).
             for idItr,curr_id in enumerate(pdIds+hcIds):
-                predictions['predictions'][curr_id]=mfda_clf.predict(tst_pred_tpls[idItr])
+                results['Data']['mFDA_spear_corr'][o_itr][curr_id]=mfda_clf.predict(tst_pred_tpls[idItr])
+#                 predictions['predictions'][curr_id]=mfda_clf.predict(tst_pred_tpls[idItr])
 
             class_report=classification_report(yTest,grid.predict(xTest))
             results['Data']['train_acc']+=tr_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
@@ -298,7 +300,7 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
         
-        results['Data']['mFDA_spear_corr']+=np.spearmanr(predictions['predictions'].values,mfdas)/total_itrs     
+#         results['Data']['mFDA_spear_corr']+=stats.spearmanr(predictions['predictions'].values,mfdas)[0]/total_itrs     
     
     if 'wvlt' in reps:
         results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")

@@ -7,6 +7,7 @@ import random
 import pdb
 import itertools
 from AEspeech import AEspeech
+from scipy import stats
 from scipy.stats import kurtosis, skew
 from sklearn import svm, datasets
 from sklearn.svm import SVC
@@ -72,18 +73,18 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
 if __name__=="__main__":
 
     if len(sys.argv)!=4:
-        print("python pdsvmLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
+        print("python pdsvmEarlyFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/'    
     
     if sys.argv[1] in MODELS:
         model=sys.argv[1]
     else:
-        print("python pdsvmLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
+        print("python pdsvmEarlyFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
         sys.exit() 
     
     if int(sys.argv[2]) not in [2,3]:
-        print("python pdsvmLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
+        print("python pdsvmEarlyFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
         sys.exit()
     else:
         nreps=int(sys.argv[2])
@@ -178,13 +179,13 @@ if __name__=="__main__":
         sys.exit()
     
     total_itrs=config['svm']['iterations']
-    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'mFDA_spear_corr':0,'opt_thresh':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'opt_thresh':0,'mFDA_spear_corr':{itr:{idx:{utter:0 for utter in UTTERS} for idx in np.arange(100)} for itr in range(total_itrs)},'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
     threshes=[]
                                       
     for o_itr in range(total_itrs):
         pd_files=pdNames
         hc_files=hcNames
-        predictions=pd.DataFrame(index=np.arange(100), columns=UTTERS)
+#         predictions=pd.DataFrame(index=np.arange(100), columns=UTTERS)
         
         for itr in range(int(num_spks/num_pdHc_tests)):
             pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),int(num_pdHc_tests/2))]
@@ -251,12 +252,8 @@ if __name__=="__main__":
                 thresh=thresh/100
                 g_locs=np.where(diffs>=thresh)
                 l_locs=np.where(diffs<thresh)
-                if sum(diffs[0:pdYTrain.shape[0]])<0:
-                    acc_curr=len(np.where(l_locs[0]<pdYTrain.shape[0])[0])
-                    acc_curr+=len(np.where(g_locs[0]>=pdYTrain.shape[0])[0])
-                else:
-                    acc_curr=len(np.where(l_locs[0]>=pdYTrain.shape[0])[0])
-                    acc_curr+=len(np.where(g_locs[0]<pdYTrain.shape[0])[0])
+                acc_curr=len(np.where(l_locs[0]<pdYTrain.shape[0])[0])
+                acc_curr+=len(np.where(g_locs[0]>=pdYTrain.shape[0])[0])
 
                 if acc_curr/yTrain.shape[0]>train_acc:
                     opt_thresh=thresh
@@ -269,19 +266,13 @@ if __name__=="__main__":
             tst_diffs=bin_class[:,0]-bin_class[:,1]
             tst_g_locs=np.where(tst_diffs>=opt_thresh)
             tst_l_locs=np.where(tst_diffs<opt_thresh)
-            if sum(diffs[0:pdYTrain.shape[0]])<0:
-                test_acc=len(np.where(tst_l_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
-                test_acc+=len(np.where(tst_g_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
-            else:
-                test_acc=len(np.where(tst_l_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
-                test_acc+=len(np.where(tst_g_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
-            
-            
+            test_acc=len(np.where(tst_l_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+            test_acc+=len(np.where(tst_g_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
             #predict mfdas
             for idItr,curr_id in enumerate(pdIds+hcIds):
                 preds=mfda_grid.predict(xTest[idItr*num_utters:(idItr+1)*num_utters,:])
                 for i_utter_idx,utter in enumerate(UTTERS):
-                    predictions['predictions'][curr_id][utter]=preds[i_utter_idx]
+                    results['Data']['mFDA_spear_corr'][o_itr][curr_id][utter]=preds[i_utter_idx]
             
             class_report=classification_report(yTest,grid.predict(xTest))
             results['Data']['train_acc']+=train_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
@@ -291,8 +282,8 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
         
-        predis=predictions.mean(axis=1).values
-        results['Data']['mFDA_spear_corr']+=np.spearmanr(predis,mfdas)/total_itrs
+#         predis=predictions.median(axis=1).values
+#         results['Data']['mFDA_spear_corr']+=stats.spearmanr(predis,mfdas)[0]/total_itrs
         
     results['Data']['opt_thresh']=np.median(threshes) 
     

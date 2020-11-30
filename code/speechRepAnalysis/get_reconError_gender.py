@@ -104,7 +104,7 @@ if __name__ == "__main__":
                 mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
                 error=torch.mean(mat_error,2).cpu().detach().numpy()
 #                 error=torch.mean(mat_error,2).detach().numpy()
-#                 error=(error-error.mean())/error.std()
+                error=(error-error.mean())/error.std()
                 if genders[(s_itr*num_files)+ii]=='M':
                     if spk=='pd':
                         data_curr_means_pdm[pdm_itr,:]=np.mean(error,axis=0)

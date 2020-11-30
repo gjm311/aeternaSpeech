@@ -56,6 +56,7 @@ if __name__ == "__main__":
     
     data={spk:{'means':[], 'stds':[]} for spk in ['pd','hc']}
     utters= os.listdir(PATH+sys.argv[3])
+    utters=['pataka']
     
     for itr,utter in enumerate(utters):
         path_utter=PATH+sys.argv[3]+'/'+utter+'/'
@@ -89,7 +90,7 @@ if __name__ == "__main__":
                 mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
                 error=torch.mean(mat_error,2).cpu().detach().numpy()
 #                 error=torch.mean(mat_error,2).detach().numpy()
-#                 error=(error-error.mean())/error.std()
+                error=(error-error.mean())/error.std()
                 data_curr_means[ii,:]=np.mean(error,axis=0)
                 data_curr_sds[ii,:]=np.std(error,axis=0)
                 

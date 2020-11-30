@@ -179,6 +179,7 @@ if __name__=="__main__":
         ######################    
         # validate the model #
         ######################
+        
 
         model.eval() # prep model for evaluation
         for data_val in test_loader:

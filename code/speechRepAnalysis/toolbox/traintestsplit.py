@@ -16,12 +16,13 @@ PATH=os.path.dirname(os.path.abspath(__file__))
 
 class trainTestSplit:
     
-    def __init__(self,file_path,file_type='.wav', tst_perc=.2):
+    def __init__(self,file_path,file_type='.wav', tst_perc=.2, gen_bal=0):
         
         self.dir_path=PATH+'/../'
         self.file_path=file_path
         self.file_type=file_type
         self.tst_perc=tst_perc
+        self.gen_bal=gen_bal
         self.ids_path=self.file_path+'/trTst_ids'+self.file_type[1:].upper()+'.pkl'
         
         if file_path[-1] != '/':
@@ -51,18 +52,41 @@ class trainTestSplit:
             hf=[name for name in os.listdir(self.file_path) if self.file_type in name]
             hf.sort()
             num_files=len(hf)
-#             if self.file_type=='.npy':
             max_idx=int(hf[-1].split('_')[2])
             idxs=np.arange(max_idx)
-#             else:
-#                 idxs = np.arange(num_files)
             num_tst = int(np.ceil(max_idx*self.tst_perc))
             num_tr = max_idx-num_tst
             
-            random.shuffle(idxs)
-
-            tr_idxs = idxs[0:num_tr]
-            tst_idxs = idxs[num_tr:]
+            #If gender imbalance is present in speech database (as is the case with the TedX Spanish corpus), sample same # of 
+            if self.gen_bal==1:
+                f_hf=[]
+                m_hf=[]
+                g_num_tr=num_tr//2
+                tr_idxs=np.zeros(num_tr)
+                
+                for h in hf:
+                    if 'F' in h:
+                        f_hf.append(h)
+                    if 'M' in h:
+                        m_hf.append(h)
+                for gItr,g_hf in enumerate([f_hf,m_hf]):
+                    g_num_files=len(g_hf)
+                    g_idxs=np.unique([int(g.split('_')[2]) for g in g_hf])
+                    if len(g_idxs)>g_num_tr:
+                        random.shuffle(g_idxs)
+                        if gItr==0:
+                            tr_idxs[:g_num_tr]=g_idxs[:g_num_tr]
+                        else:
+                            tr_idxs[g_num_tr:]=g_idxs[g_num_tr:]                            
+                    else:
+                        print("not enough female speakers for desired tr/tst split")
+                        sys.exit
+                tst_idxs=[idx for idx in idxs if idx not in tr_idxs]
+                        
+            else:                
+                random.shuffle(idxs)
+                tr_idxs = idxs[0:num_tr]
+                tst_idxs = idxs[num_tr:]
     
             self.saveAssignments(hf,tr_idxs,tst_idxs)
             for itr, file in enumerate(os.listdir(self.file_path)):

@@ -237,12 +237,8 @@ if __name__=="__main__":
                 thresh=thresh/100
                 g_locs=np.where(diffs>=thresh)
                 l_locs=np.where(diffs<thresh)
-                if sum(diffs[0:pdYTrain.shape[0]])<0:
-                    acc_curr=len(np.where(l_locs[0]<pdYTrain.shape[0])[0])
-                    acc_curr+=len(np.where(g_locs[0]>=pdYTrain.shape[0])[0])
-                else:
-                    acc_curr=len(np.where(l_locs[0]>=pdYTrain.shape[0])[0])
-                    acc_curr+=len(np.where(g_locs[0]<pdYTrain.shape[0])[0])
+                acc_curr=len(np.where(l_locs[0]<pdYTrain.shape[0])[0])
+                acc_curr+=len(np.where(g_locs[0]>=pdYTrain.shape[0])[0])
 
                 if acc_curr/yTrain.shape[0]>train_acc:
                     opt_thresh=thresh
@@ -255,12 +251,8 @@ if __name__=="__main__":
             tst_diffs=bin_class[:,0]-bin_class[:,1]
             tst_g_locs=np.where(tst_diffs>=opt_thresh)
             tst_l_locs=np.where(tst_diffs<opt_thresh)
-            if sum(diffs[0:pdYTrain.shape[0]])<0:
-                test_acc=len(np.where(tst_l_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
-                test_acc+=len(np.where(tst_g_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
-            else:
-                test_acc=len(np.where(tst_l_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
-                test_acc+=len(np.where(tst_g_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+            test_acc=len(np.where(tst_l_locs[0]<pdYTest.shape[0])[0])/yTest.shape[0]
+            test_acc+=len(np.where(tst_g_locs[0]>=pdYTest.shape[0])[0])/yTest.shape[0]
             
             
             #predict mfdas

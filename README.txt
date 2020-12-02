@@ -15,6 +15,8 @@ In the "view_recon.ipynb" Jupyter Notebook, one can see the average reconstructi
 
 Running one of "pdnnEval.py", "pdnnEvalAgg.py", "pdsvmEval.py", or "pdsvmEvalAgg.py" will first (if not done already) derive features (both bottle-neck features and reconstruction error) from the database of PD/HC speech files using the learned parameters from the previously trained auto-encoders. With the features, classification (using either a deep neural net (dnn) or support vector machine (svm)) is then performed using 10-fold cross validation. 
 
+NOTE: If new AE models are trained, one must remove the old features derived from previous models AND the saved frames corresponding to the plosive. Such feature files are built indiviudually for each utterance file and can be found in: /code/speechRepAnalysis/pdSpanish/feats/<rep: narrowband/broadband/wvlt>/<utterance: pataka,petaka,...>/frames/ and /code/speechRepAnalysis/pdSpanish/speech/<utterance: pataka,petaka,...>/frames/.
+
 The pdnnEval.py and pdsvmEval.py scripts allow for the specification of which DDK utterance one would like to consider. The 'Agg' files utilize all DDK utterances. Performance so far found to be better when a classifer is trained individually for each DDK utterance type. 
 
 For the dnn-based classifers, training/testing is done on a single speaker at a time. For the svm-based classifiers, PCA is used to reduce the dimensionality of the training set.

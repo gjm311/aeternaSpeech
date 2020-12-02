@@ -262,8 +262,8 @@ if __name__=="__main__":
                 grid.fit(xTrain,yTrain)
                 mfda_grid.fit(xTrain,mfda_yTrain)
                 
-                preds[nrep,:]=mfda_grid.predict(xTrain,mfda_yTrain)
-                tst_preds[nrep,:]=mfda_grid.predict(xTest,mfda_yTest)
+                preds[nrep,:]=mfda_grid.predict(xTrain)
+                tst_preds[nrep,:]=mfda_grid.predict(xTest)
                 
                 tr_bin_class=grid.predict_proba(xTrain)
                 diffs[nrep,:]=tr_bin_class[:,0]-tr_bin_class[:,1]

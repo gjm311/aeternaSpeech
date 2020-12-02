@@ -45,11 +45,11 @@ if __name__=="__main__":
         
     for path_rep in path_reps:
         if not os.path.exists(path_rep+'train/') or not os.path.exists(path_rep+'test/'):
-            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
+            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1, gen_bal=1)
             split.fileTrTstSplit()
 
         elif len(os.listdir(path_rep+'train/')) == 0 or len(os.listdir(path_rep+'test/')):  
-            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1)
+            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1, gen_bal=1)
             split.fileTrTstSplit()
         
     with open("config.json") as f:

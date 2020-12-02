@@ -68,10 +68,10 @@ if __name__ == "__main__":
         os.makedirs(PATH_WVLT)
         
     if not os.path.exists(PATH_AUDIO+'/train/'):
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=tst_percent)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=tst_percent, gen_bal=1)
         split.fileTrTstSplit()
     elif len(os.listdir(PATH_AUDIO+'/train/'))<=2:
-        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=tst_percent)
+        split=tts.trainTestSplit(PATH_AUDIO, tst_perc=tst_percent, gen_bal=1)
         split.fileTrTstSplit()
     
     enrgy = {'Min broadband Scale': [], 'Max broadband Scale': [], 'Min narrowband Scale': [], 'Max narrowband Scale': [], 'Min wvlt Scale': [], 'Max wvlt Scale': []}

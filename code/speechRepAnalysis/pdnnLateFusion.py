@@ -92,7 +92,6 @@ class testData(data.Dataset):
 
 if __name__=="__main__":
 
-    PATH=os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv)!=3:
         print("python pdnnLateFusion.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()        
@@ -309,7 +308,7 @@ if __name__=="__main__":
             trainResults_epo.iloc[epoch]['bb_train_loss']=train_losses[0]/ntr
             trainResults_epo.iloc[epoch]['nb_train_loss']=train_losses[1]/ntr
             
-            if np.mod(epoch,125)==0:
+            if np.mod(epoch+1),125)==0 or epoch==0:
                 #Iterate through thresholds and choose one that yields best validation acc.
                 #Iterate through all num_tr training patients and classify based off difference in probability of PD/HC
                 tags={spk:[] for spk in rand_range if spk not in np.concatenate((pdIds,hcIds,valIds))}

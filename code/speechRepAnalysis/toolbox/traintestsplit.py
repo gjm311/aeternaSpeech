@@ -16,7 +16,7 @@ PATH=os.path.dirname(os.path.abspath(__file__))
 
 class trainTestSplit:
     
-    def __init__(self,file_path,file_type='.wav', tst_perc=.2, gen_bal=0):
+    def __init__(self,file_path, file_type='.wav', tst_perc=.2, gen_bal=0, assign_path=""):
         
         self.dir_path=PATH+'/../'
         self.file_path=file_path
@@ -24,6 +24,7 @@ class trainTestSplit:
         self.tst_perc=tst_perc
         self.gen_bal=gen_bal
         self.ids_path=self.file_path+'/trTst_ids'+self.file_type[1:].upper()+'.pkl'
+        self.assign_path=assign_path
         
         if file_path[-1] != '/':
             self.file_path = file_path+'/'
@@ -87,12 +88,14 @@ class trainTestSplit:
                 random.shuffle(idxs)
                 tr_idxs = idxs[0:num_tr]
                 tst_idxs = idxs[num_tr:]
-    
-            self.saveAssignments(hf,tr_idxs,tst_idxs)
+            
+            if self.assign_path=="":
+                self.saveAssignments(hf,tr_idxs,tst_idxs)
+            else:
+                tr_idxs,tst_idxs=self.fetchIds()
             for itr, file in enumerate(os.listdir(self.file_path)):
                 if self.file_type in file:
                     itr=int(file.split('_')[2])
-#                     print(itr)
                     if itr-1 in tr_idxs:
                         shutil.move(self.file_path+file, self.tr_path+file)
                     elif itr-1 in tst_idxs:
@@ -141,8 +144,8 @@ class trainTestSplit:
                 shutil.move(self.tr_path+file, self.file_path+'/'+file)
             for file in os.listdir(self.tst_path):
                 shutil.move(self.tst_path+file, self.file_path+'/'+file)
-            os.rmtree(self.tr_path)
-            os.rmtree(self.tst_path)
+#             os.rmtree(self.tr_path)
+#             os.rmtree(self.tst_path)
                             
     def saveAssignments(self,hf,tr_ids,tst_ids):
         tr_names=[hf[lnk] for lnk in tr_ids]
@@ -152,20 +155,20 @@ class trainTestSplit:
             pickle.dump(self.assignments, f)
         
     def fetchIds(self):
-        if not os.path.exists(self.ids_path):
+        if not os.path.exists(self.assign_path):
             print("No train/test assignments exist... try saveAssignments()")
         else:
-            with open(self.ids_path, 'rb') as f:
+            with open(self.assign_path, 'rb') as f:
                 info_dict=pickle.load(f)
             trIds=info_dict['trIds']
             tstIds=info_dict['tstIds']
             return trIds,tstIds
         
     def fetchNames(self):
-        if not os.path.exists(self.ids_path):
+        if not os.path.exists(self.assign_path):
             print("No train/test assignments exist... try saveAssignments()")
         else:
-            with open(self.ids_path, 'rb') as f:
+            with open(self.assign_path, 'rb') as f:
                 info_dict=pickle.load(f)   
             trNames=info_dict['trNames']
             tstNames=info_dict['tstNames']

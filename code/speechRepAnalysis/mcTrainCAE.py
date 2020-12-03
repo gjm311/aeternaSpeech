@@ -35,7 +35,7 @@ if __name__=="__main__":
 
     PATH=os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv) != 2:
-        print("python TrainCAE.py <bottleneck_sizes>")
+        print("python mcTrainCAE.py <bottleneck_sizes>")
         sys.exit()
     #rep_path: "./tedx_spanish_corpus/reps/'wvlt or broadband or narrowband'/train/"    
         
@@ -43,26 +43,30 @@ if __name__=="__main__":
     reps=['broadband','narrowband']
     path_reps=[PATH+'/tedx_spanish_corpus/reps/'+rep+'/train/' for rep in reps]
         
-    for path_rep in path_reps:
-        if not os.path.exists(path_rep+'train/') or not os.path.exists(path_rep+'test/'):
-            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1, gen_bal=1)
+    for rpathItr,path_rep in enumerate(path_reps):
+        if rpathItr==0:
+            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.3)
+            if len(os.listdir(path_rep+'train/')) != 0 or len(os.listdir(path_rep+'test/')) != 0:
+                split.wavReset()
+            split.fileTrTstSplit()
+            assign_path=path_rep+'/trTst_idsNPY.pkl'
+        else:
+            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.3, assign_path=assign_path)
+            if len(os.listdir(path_rep+'train/'))!=0 or len(os.listdir(path_rep+'test/'))!=0:
+                split.wavReset()
             split.fileTrTstSplit()
 
-        elif len(os.listdir(path_rep+'train/')) == 0 or len(os.listdir(path_rep+'test/')):  
-            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.1, gen_bal=1)
-            split.fileTrTstSplit()
-        
+                
     with open("config.json") as f:
         data = f.read()
     config = json.loads(data)
     
     FS=config['general']['FS']
-    NVAL=config['CAE']['NVAL']
-    NTRAIN=config['CAE']['NTRAIN']
     N_EPOCHS=config['CAE']['N_EPOCHS']
     LR=config['CAE']['LR']
     NUM_W=config['CAE']['NUM_W']
     BATCH_SIZE=config['CAE']['BATCH_SIZE']
+    BATCH_SIZE=4
     
     BOTTLE_SIZE=int(sys.argv[1])
     

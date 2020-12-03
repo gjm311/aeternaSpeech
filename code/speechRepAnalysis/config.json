@@ -27,8 +27,6 @@
         },
     
     "CAE": {
-        "NVAL": 500,
-        "NTRAIN":6000,
         "N_EPOCHS":25,
         "LR":0.0001,
         "NUM_W":0,
@@ -56,8 +54,8 @@
         "NUM_W": 0,
         "N_EPOCHS": 500,
         "LR": 10e-5,
-        "tst_spks":20,
-        "val_spks":20
+        "tst_spks":10,
+        "val_spks":10
         }
     
     

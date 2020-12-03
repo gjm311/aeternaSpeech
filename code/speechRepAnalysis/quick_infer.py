@@ -42,7 +42,7 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
 if __name__ == "__main__":
     
     if len(sys.argv)!=4:
-        print("python get_rep.py <nb-(1) or bb-(0)> <ori or recon> <path_audio>")
+        print("python quick_infer.py <nb-(1) or bb-(0)> <ori or recon> <path_audio>")
         sys.exit()
 #    "./tedx_spanish_corpus/speech/train/"
     if sys.argv[3][0] != '/':
@@ -52,16 +52,16 @@ if __name__ == "__main__":
         sys.argv[3] = sys.argv[3]+'/'
         
     if sys.argv[2] not in ['ori','recon']:
-        print("python get_rep.py <nb-(1) or bb-(0)> <ori or recon> <path_audio>")
+        print("python quick_infer.py <nb-(1) or bb-(0)> <ori or recon> <path_audio>")
         sys.exit()
     else:
         ori=sys.argv[2]
 
-    if sys.argv[1] not in [0,1]:
-        print("python get_rep.py <nb-(1) or bb-(0)> <ori or recon> <path_audio>")
+    if int(sys.argv[1]) not in [0,1]:
+        print("python quick_infer.py <nb-(1) or bb-(0)> <ori or recon> <path_audio>")
         sys.exit()
     else:
-        nb=sys.argv[1]
+        nb=int(sys.argv[1])
     
     with open("config.json") as f:
         data = f.read()
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     
     FS=config['general']['FS']
     NFFT=config['mel_spec']['NFFT']
-    unit=config['general']['UNITS']
+    units=config['general']['UNITS']
     TIME_STEPS=config['mel_spec']['TIME_STEPS']
     TIME_SHIFT=config['mel_spec']['TIME_SHIFT']
     FRAME_SIZE=config['mel_spec']['FRAME_SIZE']
@@ -98,15 +98,20 @@ if __name__ == "__main__":
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     model_dir=PATH+"/diff_models/"+rep+"/" #'/path/to/model/dir'
-    model_files=os.listdir(model_dir).sort()
+    model_files=os.listdir(model_dir)
+    model_files.sort()
     if ori=='ori':
         model_dir=model_dir+model_files[0]
     else:
         model_dir=model_dir+model_files[1]
-
+    
+    itr=0
     for iter in range(5):
-        path_audio=PATH+sys.argv[2]
-        wav_file=path_audio+os.listdir(path_audio)[iter]
+        
+        while '.npy' in os.listdir(path_audio)[itr]:
+            itr+=1
+            
+        wav_file=path_audio+os.listdir(path_audio)[itr]
                 
         if ori=='ori':
             fs_in, signal=read(wav_file)
@@ -122,18 +127,22 @@ if __name__ == "__main__":
             imag=np.log(imag, dtype=np.float32)
             spectrogram=torch.from_numpy(imag)
         else:
-            aespeech=AEspeech(model='CAE',units=UNIT,rep=rep)  
-            to,bot=aespeech.AE.forward(aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0).float())
+            aespeech=AEspeech(model='CAE',units=units,rep=rep)   
+            if torch.cuda.is_available():
+                mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0)
+            else:
+                mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0).float()
+            to,bot=aespeech.AE.forward(mat)
             to=to.float()
-            new_to=torch.zeros((to.shape[2],to.shape[0]*to.shape[3]))
+            spectrogram=torch.zeros((to.shape[2],to.shape[0]*to.shape[3]))
             init=0
             endi=int(TIME_STEPS)
             shift=int(TIME_STEPS*(TIME_SHIFT/FRAME_SIZE))
             for fr in range(to.shape[0]):
-                new_to[:,init:endi]=to[fr,:,:,:]
+                spectrogram[:,init:endi]=to[fr,:,:,:]
                 init+=shift
                 endi+=shift
         
-        audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir)
+        audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, ori=ori, rep=rep)
         audio.to_pickle(save_path+ori+"_"+os.listdir(path_audio)[iter]+".pkl")
 #         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, device=torch.device('cpu'))

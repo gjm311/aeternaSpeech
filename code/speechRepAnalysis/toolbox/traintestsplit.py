@@ -53,17 +53,17 @@ class trainTestSplit:
             hf=[name for name in os.listdir(self.file_path) if self.file_type in name]
             hf.sort()
             num_files=len(hf)
-            max_idx=int(hf[-1].split('_')[2])
-            idxs=np.arange(max_idx)
-            num_tst = int(np.ceil(max_idx*self.tst_perc))
-            num_tr = max_idx-num_tst
+            ids=np.unique(np.array([int(h.split('_')[2]) for h in hf]))
+            max_id=len(ids)
+            num_tst = int(np.ceil(max_id*self.tst_perc))
+            num_tr = max_id-num_tst
             
-            #If gender imbalance is present in speech database (as is the case with the TedX Spanish corpus), sample same # of 
+            #If gender imbalance is present in speech database (as with TedX Spanish corpus), sample same # of m/f
             if self.gen_bal==1:
                 f_hf=[]
                 m_hf=[]
                 g_num_tr=num_tr//2
-                tr_idxs=np.zeros(num_tr)
+                tr_ids=np.zeros(num_tr)
                 
                 for h in hf:
                     if 'F' in h:
@@ -72,33 +72,33 @@ class trainTestSplit:
                         m_hf.append(h)
                 for gItr,g_hf in enumerate([f_hf,m_hf]):
                     g_num_files=len(g_hf)
-                    g_idxs=np.unique([int(g.split('_')[2]) for g in g_hf])
-                    if len(g_idxs)>g_num_tr:
-                        random.shuffle(g_idxs)
+                    g_ids=np.unique([int(g.split('_')[2]) for g in g_hf])
+                    if len(g_ids)>g_num_tr:
+                        random.shuffle(g_ids)
                         if gItr==0:
-                            tr_idxs[:g_num_tr]=g_idxs[:g_num_tr]
+                            tr_ids[:g_num_tr]=g_ids[:g_num_tr]
                         else:
-                            tr_idxs[g_num_tr:]=g_idxs[g_num_tr:]                            
+                            tr_ids[g_num_tr:]=g_ids[:num_tr-g_num_tr]                            
                     else:
-                        print("not enough female speakers for desired tr/tst split")
-                        sys.exit
-                tst_idxs=[idx for idx in idxs if idx not in tr_idxs]
+                        print("not enough speakers of one gender for desired tr/tst split")
+                        sys.exit()
+                tst_ids=[eyed for eyed in ids if eyed not in tr_ids]
                         
             else:                
-                random.shuffle(idxs)
-                tr_idxs = idxs[0:num_tr]
-                tst_idxs = idxs[num_tr:]
+                random.shuffle(ids)
+                tr_ids = ids[0:num_tr]
+                tst_ids = ids[num_tr:]
             
             if self.assign_path=="":
-                self.saveAssignments(hf,tr_idxs,tst_idxs)
+                self.saveAssignments(hf,tr_ids,tst_ids)
             else:
-                tr_idxs,tst_idxs=self.fetchIds()
+                tr_ids,tst_ids=self.fetchIds()
             for itr, file in enumerate(os.listdir(self.file_path)):
                 if self.file_type in file:
                     itr=int(file.split('_')[2])
-                    if itr-1 in tr_idxs:
+                    if itr in tr_ids:
                         shutil.move(self.file_path+file, self.tr_path+file)
-                    elif itr-1 in tst_idxs:
+                    elif itr in tst_ids:
                         shutil.move(self.file_path+file, self.tst_path+file)
                 
                 

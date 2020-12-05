@@ -12,7 +12,7 @@ config = json.loads(data)
 drp=config['dnn']['dropout']
 
 
-class clpdn(nn.Module):
+class clpdnn(nn.Module):
     def __init__(self,M):
         super().__init__()
         self.fc1=nn.Linear(M,M//2)

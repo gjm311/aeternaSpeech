@@ -566,7 +566,10 @@ class AEspeech:
         to=self.destandard(to)
         
         if return_numpy:
-            return bot.data.cuda().numpy()
+            if torch.cuda.is_available():
+                return bot.data.cuda().numpy()
+            else:
+                return bot.data.cpu().numpy()
         else:
             return bot
 

@@ -146,6 +146,12 @@ class AEspeech:
         
         fs_in, signal=read(wav_file)
         sig_len=len(signal)
+        try:
+            signal=np.mean(signal,axis=1)
+        except:
+            signal=signal
+        
+        
         if fs_in!=FS:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
             
@@ -180,28 +186,40 @@ class AEspeech:
         endi=int(FRAME_SIZE)
         NFR=int(sig_len/TIME_SHIFT)-1
         frames=np.zeros((NFR,endi))
-        for k in range(NFR):
-            try:
-                frames[k,:]=signal[init:endi]
-            except:
-                frames[k,:]=np.append(signal[init:],np.zeros(endi-len(signal)))
-            init=init+int(TIME_SHIFT)
-            endi=endi+int(TIME_SHIFT)
-        
-        mat=torch.zeros(NFR,1,INTERP_NMELS,TIME_STEPS)
+        if NFR>0:
+            for k in range(NFR):
+                try:
+                    frames[k,:]=signal[init:endi]
+                except:
+                    frames[k,:]=np.append(signal[init:],np.zeros(endi-len(signal)))
+                init=init+int(TIME_SHIFT)
+                endi=endi+int(TIME_SHIFT)
 
-        for k,frame in enumerate(frames):
-            imag=melspectrogram(frame, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
+            mat=torch.zeros(NFR,1,INTERP_NMELS,TIME_STEPS)
+
+            for k,frame in enumerate(frames):
+                imag=melspectrogram(frame, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
+                imag=imag[np.where(imag[:,0]>0)]
+                imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
+                imag=np.abs(imag)
+                if np.min(np.min(imag))<=0:
+                    warnings.warn("There is Inf values in the Mel spectrogram")
+                    continue
+                imag=np.log(imag, dtype=np.float32)
+                imagt=torch.from_numpy(imag)
+                mat[k,:,:,:]=imagt
+        else:
+            mat=torch.zeros(1,1,INTERP_NMELS,TIME_STEPS)
+            imag=melspectrogram(signal, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
             imag=imag[np.where(imag[:,0]>0)]
             imag=cv2.resize(imag,(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
             imag=np.abs(imag)
             if np.min(np.min(imag))<=0:
                 warnings.warn("There is Inf values in the Mel spectrogram")
-                continue
             imag=np.log(imag, dtype=np.float32)
             imagt=torch.from_numpy(imag)
-            mat[k,:,:,:]=imagt
-        
+            mat[0,:,:,:]=imagt
+
         if volta==1:
             return mat,sig_len
         else:
@@ -238,26 +256,35 @@ class AEspeech:
         init=0
         endi=FRAME_SIZE
         frames=np.zeros((NFR,endi))
-        for k in range(NFR):
-            try:
-                frames[k,:]=signal[init:endi]
-            except:
-                frames[k,:]=np.concatenate((signal[init:],np.zeros(endi-len(signal))))
-            init=init+int(SHIFT)
-            endi=endi+int(SHIFT)
         
         signal=signal-np.mean(signal)
         signal=signal/np.max(np.abs(signal))
-
-        wv_mat=torch.zeros((NFR,1,NBF,TIME_STEPS))
-        freqs=np.zeros((NFR,NBF))
         
-        for k,frame in enumerate(frames):
-            fpsi,freqs[k,:] = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
+        if NFR>0:
+            for k in range(NFR):
+                try:
+                    frames[k,:]=signal[init:endi]
+                except:
+                    frames[k,:]=np.concatenate((signal[init:],np.zeros(endi-len(signal))))
+                init=init+int(SHIFT)
+                endi=endi+int(SHIFT)
+
+            wv_mat=torch.zeros((NFR,1,NBF,TIME_STEPS))
+            freqs=np.zeros((NFR,NBF))
+
+            for k,frame in enumerate(frames):
+                fpsi,freqs[k,:] = pywt.cwt(frame, np.arange(1,NBF+1), 'morl')
+                bicubic_img = cv2.resize(np.real(fpsi),DIM,interpolation=cv2.INTER_CUBIC)            
+                fpsit=torch.from_numpy(bicubic_img)
+                wv_mat[k,0,:,:]=fpsit
+        else:
+            wv_mat=torch.zeros((1,1,NBF,TIME_STEPS))
+            freqs=np.zeros((NFR,NBF))
+            fpsi,freqs = pywt.cwt(signal, np.arange(1,NBF+1), 'morl')
             bicubic_img = cv2.resize(np.real(fpsi),DIM,interpolation=cv2.INTER_CUBIC)            
             fpsit=torch.from_numpy(bicubic_img)
-            wv_mat[k,0,:,:]=fpsit
-
+            wv_mat[0,0,:,:]=fpsit
+            
         if volta==1:
             return wv_mat,freqs
         else:
@@ -460,7 +487,6 @@ class AEspeech:
         :param tensor: input tensor for the AEs (N, 128,126)
         :returns:  standardize tensor for the AEs (N, 128,126)
         """
-        
         temp=tensor-tensor.min()
         temp/(tensor.max()-tensor.min())
         return temp.float()
@@ -495,7 +521,10 @@ class AEspeech:
         to=self.destandard(to)
         
         if return_numpy:
-            return bot.data.cuda().numpy()
+            if torch.cuda.is_available():
+                return bot.data.cuda().numpy()
+            else:
+                return bot.data.cpu().numpy()
         else:
             return bot
 
@@ -518,7 +547,6 @@ class AEspeech:
         to, bot=self.AE.forward(mat)
 
         to=self.destandard(to)
-
         mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
         error=torch.mean(mat_error,2).detach().numpy()
         error=(error-np.mean(error))/np.std(error)
@@ -579,7 +607,7 @@ class AEspeech:
             metadata["wav_file"].append(list_wav)
             frames=np.arange(nframes)
             metadata["frame"].append(frames)
-
+        
         metadata["bottleneck"]=np.concatenate(metadata["bottleneck"], 0)
         metadata["error"]=np.concatenate(metadata["error"], 0)
         metadata["wav_file"]=np.hstack(metadata["wav_file"])

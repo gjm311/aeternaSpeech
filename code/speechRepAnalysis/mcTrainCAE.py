@@ -45,13 +45,13 @@ if __name__=="__main__":
         
     for rpathItr,path_rep in enumerate(path_reps):
         if rpathItr==0:
-            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.3)
+            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.3, gen_bal=1)
             if len(os.listdir(path_rep+'train/')) != 0 or len(os.listdir(path_rep+'test/')) != 0:
                 split.wavReset()
             split.fileTrTstSplit()
             assign_path=path_rep+'/trTst_idsNPY.pkl'
         else:
-            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.3, assign_path=assign_path)
+            split=tts.trainTestSplit(path_rep,file_type='.npy', tst_perc=0.3, assign_path=assign_path,gen_bal=1)
             if len(os.listdir(path_rep+'train/'))!=0 or len(os.listdir(path_rep+'test/'))!=0:
                 split.wavReset()
             split.fileTrTstSplit()
@@ -158,8 +158,8 @@ if __name__=="__main__":
             loss.backward()
             optimizer.step()
             train_loss+=loss.item()*data_cat.size(0)
-
-                
+            
+            pdb.set_trace()
         ######################    
         # validate the model #
         ######################
@@ -188,10 +188,10 @@ if __name__=="__main__":
             data_val_out_cat=torch.cat((bb_data_val_out,nb_data_val_out),dim=0)
             loss = criterion(data_val_out_cat, data_val_cat)
             valid_loss += loss.item()*data_val_cat.size(0)
-
+        
             
-        train_loss = train_loss/len(train_loader.dataset)
-        valid_loss = valid_loss/len(test_loader.dataset)
+        train_loss = train_loss/len(train_loader.dataset['broadband'])
+        valid_loss = valid_loss/len(test_loader.dataset['broadband'])
 
 
         print('Epoch: {} \tTraining Loss: {:.6f} \tValidation Loss: {:.6f} \tTime: {:.6f}'.format(

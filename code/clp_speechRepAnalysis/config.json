@@ -47,7 +47,7 @@
     "svm": {
         "iterations": 3,
         "tst_spks":30,
-        "val_size":0.2,
+        "val_size":0.05685,
         "nsplits":4
         },
     "dnn": {

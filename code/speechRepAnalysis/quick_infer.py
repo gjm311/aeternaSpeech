@@ -14,6 +14,7 @@ import cv2
 import json
 from AEspeech import AEspeech 
 import argparse
+import torchaudio
 from scipy.signal import butter, lfilter
 import pdb
 
@@ -128,10 +129,12 @@ if __name__ == "__main__":
             spectrogram=torch.from_numpy(imag)
         else:
             aespeech=AEspeech(model='CAE',units=units,rep=rep)   
+#             if torch.cuda.is_available():
+            mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0)
+#             else:
+#                 mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0).float()
             if torch.cuda.is_available():
-                mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0)
-            else:
-                mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0).float()
+                mat=mat.cuda()
             to,bot=aespeech.AE.forward(mat)
             to=to.float()
             spectrogram=torch.zeros((to.shape[2],to.shape[0]*to.shape[3]))
@@ -144,5 +147,5 @@ if __name__ == "__main__":
                 endi+=shift
         
         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, ori=ori, rep=rep)
-        audio.to_pickle(save_path+ori+"_"+os.listdir(path_audio)[iter]+".pkl")
+        torchaudio.save(save_path+ori+"_"+os.listdir(path_audio)[iter]+".pkl", audio.cpu(), sample_rate=FS)
 #         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, device=torch.device('cpu'))

@@ -10,7 +10,7 @@ import pickle
 import shutil
 import random
 import torch.utils.data as data
-from pdnn import pdn
+from clpdnn import clpdnn
 from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.calibration import CalibratedClassifierCV
@@ -27,7 +27,7 @@ with open("config.json") as f:
     info = f.read()
 config = json.loads(info)
 UNITS=config['general']['UNITS']
-UTTERS=['bola','choza','chuza','chuzo','coco','gato','jugo','mano','papa','susi']
+UTTERS=['bola','choza','chuzo','coco','gato','jugo','mano','papa','susi']
 MODELS=["CAE","RAE","ALL"]
 REPS=['broadband','narrowband','wvlt']
 
@@ -52,7 +52,7 @@ def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
 
 def getFeats(model,units,rep,wav_path,utter,spk_typ):
     global PATH
-    save_path=PATH+"/"+"pdSpanish/feats/"+utter+"/"
+    save_path=PATH+"/"+"clpSpanish/feats/"+utter+"/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
@@ -93,97 +93,117 @@ class testData(data.Dataset):
 if __name__=="__main__":
 
     if len(sys.argv)!=3:
-        print("python pdnnLateFusion.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python clpdnnLateFusion.py <'CAE','RAE', or 'ALL'> <clp path>")
         sys.exit()        
-    #TRAIN_PATH: './pdSpanish/speech/<UTTER>/'
+    #TRAIN_PATH: './clpSpanish/speech/<UTTER>/'
     
     
     if sys.argv[1] in MODELS:
         mod=sys.argv[1]
     else:
-        print("python pdnnLateFusion.py.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python clpdnnLateFusion.py.py <'CAE','RAE', or 'ALL'> <clp path>")
         sys.exit()
     
     if sys.argv[2][0] !='/':
         sys.argv[2] = '/'+sys.argv[2]
     if sys.argv[2][-1] !='/':
         sys.argv[2] = sys.argv[2]+'/'
-        
+    spk_path=PATH+sys.argv[2]
     
     reps=['broadband','narrowband']
     LR=config['dnn']['LR']
     BATCH_SIZE=config['dnn']['BATCH_SIZE']
     NUM_W=config['dnn']['NUM_W']
     N_EPOCHS=config['dnn']['N_EPOCHS']
-    num_pdHc_tests=config['dnn']['tst_spks']#must be even (same # of test pds and hcs per iter)
+    num_clpHc_tests=config['dnn']['tst_spks']#must be even (same # of test clps and hcs per iter)
     nv=config['dnn']['val_spks']#number of validation speakers per split
-
+    num_iters=config['dnn']['num_iters']
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
 
     NBF=config['mel_spec']['INTERP_NMELS']
     
-    save_path=PATH+"/pdSpanish/classResults/dnn/"
+    save_path=PATH+"/clpSpanish/classResults/dnn/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
-    ntr=100-(num_pdHc_tests+nv)
-    testResults=pd.DataFrame({splItr:{'test_acc':0, 'tstSpk_data':{}} for splItr in range(100//num_pdHc_tests)})     
+    testResults=pd.DataFrame({splItr:{'test_acc':0, 'tstSpk_data':{}} for splItr in range(num_iters)})     
     train_res=[]
         
-    #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
-    #(see pdnn.py) and classify one by one if PD or HC.
+    #iterate through all clp and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
+    #(see clpdnn.py) and classify one by one if CLP or HC.
 #     lr_score_opt=0
 #     lr_scores=pd.DataFrame(columns=LRs,index=np.arange(1))
 #     for lrItr,LR in enumerate(LRs):
 
     #aggregate all utterance data per speaker together.
-    pdIds=np.arange(50)
-    hcIds=np.arange(50,100)
-    spkDict={rep:{spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])} for rep in reps}
+    #aggregate all utterance data per speaker together.
     
+    allClpNames=[]
+    allHcNames=[]
+    for u_idx,utter in enumerate(UTTERS):
+        clp_path=spk_path+'/'+utter+"/clp/"
+        hc_path=spk_path+'/'+utter+"/hc/"   
+        clpNames=[name for name in os.listdir(clp_path) if '.wav' in name]
+        hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
+        allClpNames.extend([clpName for clpName in clpNames if clpName not in allClpNames])
+        allHcNames.extend([hcName for hcName in hcNames if hcName not in allHcNames])
+    clpNames=list(np.unique([name.split('_')[0] for name in allClpNames]))
+    hcNames=list(np.unique([name.split('_')[0] for name in allHcNames]))
+    clpNames.sort()
+    hcNames.sort()
+    spks=clpNames+hcNames
+    num_spks=len(spks)
+    num_clp=len(clpNames)
+    num_hc=len(hcNames)
+    ntr=num_spks-(num_clpHc_tests+nv)
+    
+    #aggregate all utterance data per speaker together.
+    master_clpIds=np.arange(0,num_clp)
+    master_hcIds=np.arange(num_clp,num_clp+num_hc)
+    spkDict={rep:{spk:{} for spk in ['clp','hc']} for rep in reps}
     for rep in reps:
-        for u_idx,utter in enumerate(UTTERS):
-            pd_path=PATH+sys.argv[2]+'/'+utter+"/pd/"
-            hc_path=PATH+sys.argv[2]+'/'+utter+"/hc/"   
-            pdNames=[name for name in os.listdir(pd_path) if '.wav' in name]
-            hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
-            pdNames.sort()
-            hcNames.sort()
-            spks=pdNames+hcNames
-            num_spks=len(spks)
-            num_pd=len(pdNames)
-            num_hc=len(hcNames)
-            pdFeats=getFeats(mod,UNITS,rep,pd_path,utter,'pd')
+        spkDict[rep]['clp']={num:[] for num in master_clpIds}
+        spkDict[rep]['hc']={num:[] for num in master_hcIds}
+        
+    for u_idx,utter in enumerate(UTTERS):
+        clp_path=spk_path+'/'+utter+"/clp/"
+        hc_path=spk_path+'/'+utter+"/hc/"   
+        clpNames_curr=[name for name in os.listdir(clp_path) if '.wav' in name]
+        hcNames_curr=[name for name in os.listdir(hc_path) if '.wav' in name]
+        clpNames_curr.sort()
+        hcNames_curr.sort()
+        clp_rng=np.arange(num_clp)
+        hc_rng=np.arange(num_hc)
+        clpIds_curr=[spks.index(clpName.split('_')[0]) for clpName in clpNames_curr]
+        hcIds_curr=[spks.index(hcName.split('_')[0]) for hcName in hcNames_curr]
+        for rIdx,rep in enumerate(reps):
+            clpFeats=getFeats(mod,UNITS,rep,clp_path,utter,'clp')
             hcFeats=getFeats(mod,UNITS,rep,hc_path,utter,'hc')
-            pdAll=np.unique(pdFeats['wav_file'])
-            hcAll=np.unique(hcFeats['wav_file'])
 
-            for p in pdIds:
-                pdBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[p])]
-                pdErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[p])]
-                if u_idx==0:
-                    spkDict[rep]['pd'][p]=np.concatenate((pdBns,pdErrs),axis=1)
+            for rItr,pItr in zip(clp_rng,clpIds_curr):
+                clpBns=clpFeats['bottleneck'][np.where(clpFeats['wav_file']==clpNames_curr[rItr])]
+                clpErrs=clpFeats['error'][np.where(clpFeats['wav_file']==clpNames_curr[rItr])]
+                if len(spkDict[rep]['clp'][pItr])==0:
+                    spkDict[rep]['clp'][pItr]=np.concatenate((clpBns,clpErrs),axis=1)
                 else:
-                    spkDict[rep]['pd'][p]=np.concatenate((spkDict[rep]['pd'][p],np.concatenate((pdBns,pdErrs),axis=1)),axis=0)
-
-            for h in hcIds:
-                hcBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[h])]
-                hcErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[h])]
-                if u_idx==0:
-                    spkDict[rep]['hc'][h]=np.concatenate((hcBns,hcErrs),axis=1)
+                    spkDict[rep]['clp'][pItr]=np.concatenate((spkDict[rep]['clp'][pItr],np.concatenate((clpBns,clpErrs),axis=1)),axis=0)
+            for rItr,hItr in zip(hc_rng,hcIds_curr):
+                hcBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==hcNames_curr[rItr])]
+                hcErrs=hcFeats['error'][np.where(hcFeats['wav_file']==hcNames_curr[rItr])]
+                if len(spkDict[rep]['hc'][hItr])==0:
+                    spkDict[rep]['hc'][hItr]=np.concatenate((hcBns,hcErrs),axis=1)
                 else:
-                    spkDict[rep]['hc'][h]=np.concatenate((spkDict[rep]['hc'][h],np.concatenate((hcBns,hcErrs),axis=1)),axis=0)
+                    spkDict[rep]['hc'][hItr]=np.concatenate((spkDict[rep]['hc'][hItr],np.concatenate((hcBns,hcErrs),axis=1)),axis=0)
 
-        
-        
-    #split data into training and test with multiple iterations (evenly split PD:HC)
-    pd_files=pdNames
-    hc_files=hcNames
+                    
     
-    for itr in range(100//num_pdHc_tests):
+    clp_files=clpNames
+    hc_files=hcNames
+    #split data into training and test with multiple iterations (evenly split CLP:HC) 
+    for itr in range(num_iters):
         #RESET model
-        nb_model=pdn(UNITS+NBF)
-        bb_model=pdn(UNITS+NBF)
+        nb_model=clpdnn(UNITS+NBF)
+        bb_model=clpdnn(UNITS+NBF)
         criterion=nn.BCELoss()
         nb_optimizer = torch.optim.Adam(nb_model.parameters(), lr = LR)
         bb_optimizer = torch.optim.Adam(bb_model.parameters(), lr = LR)
@@ -197,38 +217,47 @@ if __name__=="__main__":
             print('Cached:   ', round(torch.cuda.memory_cached(0)/1024**3,1), 'GB')
         
         #Get test speaker features
-        pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),num_pdHc_tests//2)]
-        hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),num_pdHc_tests//2)]
-        pd_files=[pd for pd in pd_files if pd not in pdCurrs]
+        clpCurrs=[clp_files[idx] for idx in random.sample(range(0,len(clp_files)),num_clpHc_tests//2)]
+        hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),num_clpHc_tests//2)]
+        clp_files=[clp for clp in clp_files if clp not in clpCurrs]
         hc_files=[hc for hc in hc_files if hc not in hcCurrs]
-
-        pdIds=[spks.index(pdCurr) for pdCurr in pdCurrs]
+        
+        if not hc_files:
+            hc_files=hcNames
+        if len(hc_files)<num_clpHc_tests//2:
+            left_ids=[lid for lid in np.arange(num_hc) if hcNames[lid] not in hc_files]
+            add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
+            hc_files.extend(np.array(hcNames)[add_ids])
+        
+        clpIds=[spks.index(clpCurr) for clpCurr in clpCurrs]
         hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
         
-        testDict={rep:{spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])} for rep in reps}
+        testDict={rep:{spk:{} for spk in ['clp','hc']} for rep in reps}
+        testDict['clp']={num:[] for num in clpIds}
+        testDict['hc']={num:[] for num in hcIds}
         
         for rep in reps:
-            for pdItr in pdIds:
-                testDict[rep]['pd'][pdItr]=spkDict[rep]['pd'][pdItr]
+            for clpItr in clpIds:
+                testDict[rep]['clp'][clpItr]=spkDict[rep]['clp'][clpItr]
             for hcItr in hcIds:
                 testDict[rep]['hc'][hcItr]=spkDict[rep]['hc'][hcItr]
         
-        #Separate 'nv' (equal number of pd/hc) Validation speakers and get features
-        notTestSpksPD=[spk for spk in pdNames if spk not in pdCurrs]
+        #Separate 'nv' (equal number of clp/hc) Validation speakers and get features
+        notTestSpksCLP=[spk for spk in clpNames if spk not in clpCurrs]
         notTestSpksHC=[spk for spk in hcNames if spk not in hcCurrs]
-        validsPD=[notTestSpksPD[idx] for idx in random.sample(range(0,len(notTestSpksPD)),nv//2)]
+        validsCLP=[notTestSpksCLP[idx] for idx in random.sample(range(0,len(notTestSpksCLP)),nv//2)]
         validsHC=[notTestSpksHC[idx] for idx in random.sample(range(0,len(notTestSpksHC)),nv//2)]
-        valids=validsPD+validsHC
+        valids=validsCLP+validsHC
         valIds=[spks.index(valid) for valid in valids]
-        valDict={rep:{num:{'feats':[]} for num in valIds} for rep in reps}
+        valDict={rep:{num:[] for num in valIds} for rep in reps}
 
         #getting bottle neck features and reconstruction error for validation speakers
         
         for ii,val in enumerate(valids):
             for rep in reps:
                 vitr=valIds[ii]
-                if vitr<num_pd:
-                    spk_typ='pd'
+                if vitr<num_clp:
+                    spk_typ='clp'
                 else:
                     spk_typ='hc'
                 valDict[rep][vitr]=spkDict[rep][spk_typ][vitr]
@@ -242,12 +271,12 @@ if __name__=="__main__":
             
             #TRAIN dnn for each speaker individually.             
             for trainItr in rand_range:   
-                if trainItr in np.concatenate((pdIds,hcIds,valIds)):
+                if trainItr in np.concatenate((clpIds,hcIds,valIds)):
                     continue
-                if trainItr<num_pd:
+                if trainItr<num_clp:
                     trainIndc=1
                     trainOpp=0
-                    spk_typ='pd'
+                    spk_typ='clp'
                 else:
                     trainIndc=0
                     trainOpp=1
@@ -287,7 +316,7 @@ if __name__=="__main__":
                                 y_pred=bb_model.forward(X_train)
                             elif rep=='narrowband':
                                 y_pred=nb_model.forward(X_train)
-                            #Find difference in probability of PD v. HC for all segments.
+                            #Find difference in probability of CLP v. HC for all segments.
                             
                             if torch.cuda.is_available():
                                 y_pred=y_pred.cuda()
@@ -304,23 +333,23 @@ if __name__=="__main__":
                         #tally up train loss total for given speaker
                         train_losses[rtritr]+=train_loss_curr/len(train_loader.dataset)                           
 
-            #Record train loss at end of each epoch (divide by number of train patients - ntr).
+            #Record train loss at end of each epoch (divide by number of train patients).
             trainResults_epo.iloc[epoch]['bb_train_loss']=train_losses[0]/ntr
             trainResults_epo.iloc[epoch]['nb_train_loss']=train_losses[1]/ntr
             
             if np.mod(epoch+1,125)==0 or epoch==0:
                 #Iterate through thresholds and choose one that yields best validation acc.
-                #Iterate through all num_tr training patients and classify based off difference in probability of PD/HC
-                tags={spk:[] for spk in rand_range if spk not in np.concatenate((pdIds,hcIds,valIds))}
+                #Iterate through all num_tr training patients and classify based off difference in probability of CLP/HC
+                tags={spk:[] for spk in rand_range if spk not in np.concatenate((clpIds,hcIds,valIds))}
                 frame_res=[]
                 for rritr,trainItr in enumerate(rand_range):   
-                    if trainItr in np.concatenate((pdIds,hcIds,valIds)):
+                    if trainItr in np.concatenate((clpIds,hcIds,valIds)):
                         continue
 
-                    if trainItr<num_pd:
+                    if trainItr<num_clp:
                         trainIndc=1
                         trainOpp=0
-                        spk_typ='pd'
+                        spk_typ='clp'
                     else:
                         trainIndc=0
                         trainOpp=1
@@ -376,13 +405,13 @@ if __name__=="__main__":
                 for scount,spk in enumerate(tags.keys()):
                     if scount==0:
                         preds=modCal.predict_proba(tags[spk])
-                        if spk<num_pd:
+                        if spk<num_clp:
                             pred_truths=np.ones(len(tags[spk]))
                         else:
                             pred_truths=np.zeros(len(tags[spk]))
                     else:
                         preds=np.concatenate((preds,modCal.predict_proba(tags[spk])))
-                        if spk<num_pd:
+                        if spk<num_clp:
                             pred_truths=np.concatenate((pred_truths,np.ones(len(tags[spk]))))
                         else:
                             pred_truths=np.concatenate((pred_truths,np.zeros(len(tags[spk]))))
@@ -395,7 +424,7 @@ if __name__=="__main__":
                 tags={spk:[] for spk in valIds}
                 frame_res=[]
                 for rritr,vid in enumerate(valIds):
-                    if vid<num_pd:
+                    if vid<num_clp:
                         indc=1
                         opp=0
                     else:
@@ -444,13 +473,13 @@ if __name__=="__main__":
                 for scount,spk in enumerate(tags.keys()):
                     if scount==0:
                         preds=modCal.predict_proba(tags[spk])
-                        if spk<num_pd:
+                        if spk<num_clp:
                             pred_truths=np.ones(len(tags[spk]))
                         else:
                             pred_truths=np.zeros(len(tags[spk]))
                     else:
                         preds=np.concatenate((preds,modCal.predict_proba(tags[spk])))
-                        if spk<num_pd:
+                        if spk<num_clp:
                             pred_truths=np.concatenate((pred_truths,np.ones(len(tags[spk]))))
                         else:
                             pred_truths=np.concatenate((pred_truths,np.zeros(len(tags[spk]))))
@@ -471,11 +500,11 @@ if __name__=="__main__":
 
         #AFTER MODEL TRAINED (FOR ALL SPEAKERS AND OVER NUM_EPOCHS), TEST MODEL ON LEFT OUT SPEAKERS  
         test_loss=0.0
-        tags={spk:[] for spk in pdIds+hcIds}
+        tags={spk:[] for spk in clpIds+hcIds}
         frame_res=[]
-        for spkItr,spk in enumerate(['pd','hc']):
+        for spkItr,spk in enumerate(['clp','hc']):
             for rritr,tstId in enumerate(testDict[list(testDict.keys())[0]][spk].keys()):
-                if tstId<num_pd:
+                if tstId<num_clp:
                     indc=1
                     opp=0
                 else:
@@ -523,13 +552,13 @@ if __name__=="__main__":
             
             if scount==0:
                 preds=modCal.predict_proba(tags[key])
-                if key<num_pd:
+                if key<num_clp:
                     pred_truths=np.ones(len(tags[key]))
                 else:
                     pred_truths=np.zeros(len(tags[key]))
             else:
                 preds=np.concatenate((preds,modCal.predict_proba(tags[key])))
-                if key<num_pd:
+                if key<num_clp:
                     pred_truths=np.concatenate((pred_truths,np.ones(len(tags[key]))))
                 else:
                     pred_truths=np.concatenate((pred_truths,np.zeros(len(tags[key]))))

@@ -70,7 +70,7 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     
     return feat_vecs
        
-def featAgg(model,rep,spk_path,num_feats,ef):
+def featAgg(model,rep,spk_path,num_feats,ef,feats=[]):
     global UTTERS
     
     allClpNames=[]
@@ -85,21 +85,22 @@ def featAgg(model,rep,spk_path,num_feats,ef):
     
     clpNames_count=dict(collections.Counter([name.split('_')[0] for name in allClpNames]))
     hcNames_count=dict(collections.Counter([name.split('_')[0] for name in allHcNames]))
+    utter_count=dict(collections.Counter([name.split('_')[1].split('.')[0] for name in allClpNames+allHcNames]))
     num_clps=len(clpNames_count.keys())
     num_hcs=len(hcNames_count.keys())
     
-    spk_dict={spk:[] for spk in ['clp','hc']}
-    spk_dict['clp']={clp:[] for clp in clpNames_count.keys()}
-    spk_dict['hc']={hc:[] for hc in hcNames_count.keys()}
+    spkdict={spk:[] for spk in ['clp','hc']}
+    spkdict['clp']={clp:[] for clp in clpNames_count.keys()}
+    spkdict['hc']={hc:[] for hc in hcNames_count.keys()}
     for itr,name in enumerate(clpNames_count.keys()):
-        spk_dict['clp'][name]=np.zeros((clpNames_count[name],num_feats,4))
+        spkdict['clp'][name]=[]
     for itr,name in enumerate(hcNames_count.keys()):
-        spk_dict['hc'][name]=np.zeros((hcNames_count[name],num_feats,4))
+        spkdict['hc'][name]=[]
     clpKeys=np.zeros(num_clps)
     hcKeys=np.zeros(num_hcs)
     clpNames=list(np.unique([name.split('_')[0] for name in allClpNames]))
     hcNames=list(np.unique([name.split('_')[0] for name in allHcNames]))
-    pdb.set_trace()
+
     reps=rep
     for uIdx,utter in enumerate(UTTERS):
         clp_path=spk_path+'/'+utter+"/clp/"
@@ -107,82 +108,101 @@ def featAgg(model,rep,spk_path,num_feats,ef):
         if ef==0:           
             clpFeats=getFeats(model,UNITS,rep,clp_path,utter,'clp')
             hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
-            clpAll=np.unique(clpFeats['wav_file'])
-            hcAll=np.unique(hcFeats['wav_file'])
+            clpAll=[c.split('_')[0] for c in np.unique(clpFeats['wav_file'])]
+            hcAll=[h.split('_')[0] for h in np.unique(hcFeats['wav_file'])]
             
             for ii,tr in enumerate(clpAll):
-                clpTrBns=clpFeats['bottleneck'][np.where(clpFeats['wav_file']==tr)]
+                inner_ks=np.array([c.split('_')[0] for c in clpFeats['wav_file']])
+                clpTrBns=clpFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
                 clpTrBns=np.array([np.mean(clpTrBns,axis=0),np.std(clpTrBns,axis=0),skew(clpTrBns,axis=0),kurtosis(clpTrBns,axis=0)])
-                clpTrErrs=clpFeats['error'][np.where(clpFeats['wav_file']==tr)]
-                clpTrErrs=np.array([np.mean(clpTrErrs),np.std(clpTrErrs),skew(clpTrErrs,axis=0),kurtosis(clpTrErrs,axis=0)])
+                clpTrErrs=clpFeats['error'][np.where(inner_ks==tr.split('_')[0])]
+                clpTrErrs=np.array([np.mean(clpTrErrs,axis=0),np.std(clpTrErrs,axis=0),skew(clpTrErrs,axis=0),kurtosis(clpTrErrs,axis=0)])
                 ovrall_idx=clpNames.index(tr.split('_')[0])
                 if clpKeys[ovrall_idx]==0:
-                    spkdict['clp'][tr.split('_')[0]]=np.concatenate((clpTrBns,clpTrErrs.reshape(-1,1)),axis=1).T
+                    spkdict['clp'][tr.split('_')[0]]=np.expand_dims(np.concatenate((clpTrBns,clpTrErrs),axis=1).T,axis=0)
                     clpKeys[ovrall_idx]=1
                 else:
-                    new=np.concatenate((clpTrBns,clpTrErrs.reshape(-1,1)),axis=1).T
-                    spkdict['clp'][tr.split('_')[0]]=np.concatenate((spkdict['clp'][tr.split('_')[0]],new),axis=0)
+                    new=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                    spkdict['clp'][tr.split('_')[0]]=np.concatenate((spkdict['clp'][tr.split('_')[0]],np.expand_dims(new,axis=0)),axis=0)
                     
             for ii,tr in enumerate(hcAll):
-                hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==tr)]
+                inner_ks=np.array([h.split('_')[0] for h in hcFeats['wav_file']])
+                hcTrBns=hcFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
                 hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
-                hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==tr)]
+                hcTrErrs=hcFeats['error'][np.where(inner_ks==tr.split('_')[0])]
                 hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
                 ovrall_idx=hcNames.index(tr.split('_')[0])
                 if hcKeys[ovrall_idx]==0:
-                    ovrall_idx=hcNames.index(tr.split('_')[0])
-                    spkdict['hc'][tr.split('_')[0]]=np.concatenate((hcTrBns,hcTrErrs.reshape(-1,1)),axis=1).T
+                    spkdict['hc'][tr.split('_')[0]]=np.expand_dims(np.concatenate((hcTrBns,hcTrErrs),axis=1).T,axis=0)
                     hcKeys[ovrall_idx]=1
                 else:
-                    new=np.concatenate((hcTrBns,hcTrErrs.reshape(-1,1)),axis=1).T
-                    spkdict['hc'][tr.split('_')[0]]=np.concatenate((spkdict['hc'][tr.split('_')[0]],new),axis=0)
+                    new=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                    spkdict['hc'][tr.split('_')[0]]=np.concatenate((spkdict['hc'][tr.split('_')[0]],np.expand_dims(new,axis=0)),axis=0)
         else:
+            
+            clpR1s=np.zeros((utter_count[utter],feats[0],4))
+            hcR1s=np.zeros((utter_count[utter],feats[0],4))
+            if len(reps)==3:
+                clpR2s=np.zeros((utter_count[utter],feats[1],4))
+                hcR2s=np.zeros((utter_count[utter],feats[1],4))
+                
             for rIdx,rep in enumerate(reps):
                 clpFeats=getFeats(model,UNITS,rep,clp_path,utter,'clp')
                 hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
-                clpAll=np.unique(clpFeats['wav_file'])
-                hcAll=np.unique(hcFeats['wav_file'])
+                clpAll=[c.split('_')[0] for c in np.unique(clpFeats['wav_file'])]
+                hcAll=[h.split('_')[0] for h in np.unique(hcFeats['wav_file'])]
                 for ii,tr in enumerate(clpAll):
-                    clpTrBns=clpFeats['bottleneck'][np.where(clpFeats['wav_file']==tr)]
+                    inner_ks=np.array([c.split('_')[0] for c in clpFeats['wav_file']])
+                    clpTrBns=clpFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
                     clpTrBns=np.array([np.mean(clpTrBns,axis=0),np.std(clpTrBns,axis=0),skew(clpTrBns,axis=0),kurtosis(clpTrBns,axis=0)])
-                    clpTrErrs=clpFeats['error'][np.where(clpFeats['wav_file']==tr)]
-                    clpTrErrs=np.array([np.mean(clpTrErrs),np.std(clpTrErrs),skew(clpTrErrs,axis=0),kurtosis(clpTrErrs,axis=0)])
-                    ovrall_idx=clpNames.index(tr.split('_')[0])
-                    if clpKeys[ovrall_idx]==0:
-                        if rIdx==0:
-                            spkdict['clp'][tr.split('_')[0]]=np.concatenate((clpTrBns,clpTrErrs.reshape(-1,1)),axis=1).T
+                    clpTrErrs=clpFeats['error'][np.where(inner_ks==tr.split('_')[0])]
+                    clpTrErrs=np.array([np.mean(clpTrErrs,axis=0),np.std(clpTrErrs,axis=0),skew(clpTrErrs,axis=0),kurtosis(clpTrErrs,axis=0)])
+#                     ovrall_idx=clpNames.index(tr.split('_')[0])
+#                     if clpKeys[ovrall_idx]==0:
+                    if rIdx==0:
+                        clpR1s[ii,:,:]=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                    elif len(reps)==3 and rIdx==1:
+                        clpR2s[ii,:,:]==np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                    else:
+                        if len(reps)==3:
+                            old=np.concatenate((clpR1s[ii,:,:],clpR2s[ii,:,:]),axis=0)
                         else:
-                            new=np.concatenate((clpTrBns,clpTrErrs.reshape(-1,1)),axis=1).T
-                            spkdict['clp'][tr.split('_')[0]]=np.concatenate((spkdict['clp'][tr.split('_')[0]],new),axis=1)
+                            old=clpR1s[ii,:,:]
+                        new=np.concatenate((old,np.concatenate((clpTrBns,clpTrErrs),axis=1).T),axis=0)
+                        ovrall_idx=clpNames.index(tr.split('_')[0])
+                        if clpKeys[ovrall_idx]==0:
+                            spkdict['clp'][tr.split('_')[0]]=np.expand_dims(new,axis=0)
                             clpKeys[ovrall_idx]=1
-                    else:
-                        if rIdx==0:
-                            clpsR1=np.concatenate((clpTrBns,clpTrErrs.reshape(-1,1)),axis=1).T
                         else:
-                            new=np.concatenate((clpsR1,np.concatenate((clpTrBns,clpTrErrs.reshape(-1,1)),axis=1).T),axis=1)
-                            spkdict['clp'][tr.split('_')[0]]=np.concatenate((spkdict['clp'][tr.split('_')[0]],new),axis=0)
-                    
-                            
-                for ii,tr in enumerate(hcAll):
-                    hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==tr)]
-                    hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
-                    hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==tr)]
-                    hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
-                    ovrall_idx=hcNames.index(tr.split('_')[0])
-                    if hcKeys[ovrall_idx]==0:
-                        if rIdx==0:
-                            spkdict['hc'][tr.split('_')[0]]=np.concatenate((hcTrBns,hcTrErrs.reshape(-1,1)),axis=1).T
-                        else:
-                            new=np.concatenate((hcTrBns,hcTrErrs.reshape(-1,1)),axis=1).T
-                            spkdict['hc'][tr.split('_')[0]]=np.concatenate((spkdict['hc'][tr.split('_')[0]],new),axis=1)
-                            hcKeys[ovrall_idx]=1
-                    else:
-                        if rIdx==0:
-                            hcsR1=np.concatenate((hcTrBns,hcTrErrs.reshape(-1,1)),axis=1).T
-                        else:
-                            new=np.concatenate((hcsR1,np.concatenate((hcTrBns,hcTrErrs.reshape(-1,1)),axis=1).T),axis=1)
-                            spkdict['hc'][tr.split('_')[0]]=np.concatenate((spkdict['hc'][tr.split('_')[0]],new),axis=0)
+                            spkdict['clp'][tr.split('_')[0]]=np.concatenate((spkdict['clp'][tr.split('_')[0]],np.expand_dims(new,axis=0)),axis=0)
 
+                for ii,tr in enumerate(hcAll):
+                    inner_ks=np.array([h.split('_')[0] for h in hcFeats['wav_file']])
+                    hcTrBns=hcFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
+                    hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
+                    hcTrErrs=hcFeats['error'][np.where(inner_ks==tr.split('_')[0])]
+                    hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
+#                     ovrall_idx=hcNames.index(tr.split('_')[0])
+#                     if hcKeys[ovrall_idx]==0:
+                    if rIdx==0:
+                        hcR1s[ii,:,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                    elif len(reps)==3 and rIdx==1:
+                        hcR2s[ii,:,:]==np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                    else:
+                        if len(reps)==3:
+                            old=np.concatenate((hcR1s[ii,:,:],hcR2s[ii,:,:]),axis=0)
+                        else:
+                            old=hcR1s[ii,:,:]
+                        new=np.concatenate((old,np.concatenate((hcTrBns,hcTrErrs),axis=1).T),axis=0)
+                        ovrall_idx=hcNames.index(tr.split('_')[0])
+                        if hcKeys[ovrall_idx]==0:
+                            spkdict['hc'][tr.split('_')[0]]=np.expand_dims(new,axis=0)
+                            hcKeys[ovrall_idx]=1
+                        else:
+                            spkdict['hc'][tr.split('_')[0]]=np.concatenate((spkdict['hc'][tr.split('_')[0]],np.expand_dims(new,axis=0)),axis=0)
+                            
+                            
+    pdb.set_trace()
     clpXAll=np.reshape(clps,(clps.shape[0],num_feats*4))
     hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
     xAll=np.concatenate((clpXAll,hcXAll),axis=0)
@@ -196,7 +216,7 @@ def featAgg(model,rep,spk_path,num_feats,ef):
     pca = PCA(n_components=ncs)
     pca_xAll=pca.fit_transform(st_xAll)
     
-    return spk_dict,pca_xAll,ncs,clpNames,hcNames
+    return spkdict,pca_xAll,ncs,clpNames,hcNames
 
 
 
@@ -247,19 +267,21 @@ if __name__=="__main__":
     elif rep_typ=='early_fuse2':
         rep=['broadband','narrowband']
         num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)
+        feats=[config['mel_spec']['INTERP_NMELS']+UNITS]
         ef=1
     elif rep_typ=='early_fuse3':
         rep=['broadband','narrowband','wvlt']
         num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)+config['wavelet']['NBF']+UNITS
+        feats=[config['mel_spec']['INTERP_NMELS']+UNITS,config['wavelet']['NBF']+UNITS]
         ef=1
         
     #get compressed data, #components, and file_name list 
-    spk_dict,pca_xAll,ncs,clpNames,hcNames=featAgg(mod,rep,spk_path,num_feats,ef)
+    spk_dict,pca_xAll,ncs,clpNames,hcNames=featAgg(mod,rep,spk_path,num_feats,ef,feats)
     spks=clpNames+hcNames
     num_spks=len(spks)
     num_clps=len(clpNames)
     num_hcs=len(hcNames)
-    clpb.set_trace()
+    pdb.set_trace()
     #split data into training and test with multiple iterations
     num_clpHc_tests=config['svm']['tst_spks']#must be even (same # of test clps and hcs per iter)
     nv=config['svm']['val_size']#number of validation speakers per split#must be even and a divisor of num_spks (same # of test clps and hcs per iter)

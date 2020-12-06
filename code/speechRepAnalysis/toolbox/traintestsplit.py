@@ -82,13 +82,12 @@ class trainTestSplit:
                     else:
                         print("not enough speakers of one gender for desired tr/tst split")
                         sys.exit()
-                tst_ids=[eyed for eyed in ids if eyed not in tr_ids]
-                        
+                tst_ids=[int(eyed) for eyed in ids if eyed not in tr_ids]
+                tr_ids=tr_ids.astype(int)
             else:                
                 random.shuffle(ids)
                 tr_ids = ids[0:num_tr]
                 tst_ids = ids[num_tr:]
-            
             if self.assign_path=="":
                 self.saveAssignments(hf,tr_ids,tst_ids)
             else:

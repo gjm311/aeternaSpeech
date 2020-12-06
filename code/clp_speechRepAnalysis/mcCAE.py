@@ -77,8 +77,11 @@ class mcCAEn(nn.Module):
         self.encoder = CAEenc(dim=dim)
         self.decoder = CAEdec(dim=dim)
 
-    def forward(self, bb_x, nb_x):
+    def forward(self, bb_x, nb_x, volta=0):
         bottleneck = self.encoder(bb_x,nb_x)
         bb_x,nb_x = self.decoder(bottleneck)
-        return bb_x,nb_x
+        if volta==0:
+            return bb_x,nb_x
+        else:
+            return bb_x,nb_x,bottleneck
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=getSpecFull
+#SBATCH --job-name=getReconError
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=12000
@@ -19,7 +19,10 @@ export WORKON_HOME=/cluster/ag61iwyb/.python_cache
 #python -c "import torch;print(torch.__version__)"
 #python -c "import librosa;print(librosa.__version__)"
 
-#python3 get_reconError.py CAE spec "/pdSpanish/speech/"
-#python3 get_reconError.py RAE spec "/pdSpanish/speech/"
-#python3 get_reconError.py CAE wvlt "/pdSpanish/speech/"
-python3 get_reconError.py RAE wvlt "/pdSpanish/speech/"
+
+#python3 get_reconError.py CAE narrowband "/pdSpanish/speech/"
+#python3 get_reconError.py RAE narrowband "/pdSpanish/speech/"
+#python3 get_reconError.py CAE broadband "/pdSpanish/speech/"
+#python3 get_reconError.py RAE broadband "/pdSpanish/speech/"
+python3 get_reconError.py CAE wvlt "/pdSpanish/speech/"
+#python3 get_reconError.py RAE wvlt "/pdSpanish/speech/"

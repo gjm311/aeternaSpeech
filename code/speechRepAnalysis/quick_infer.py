@@ -147,5 +147,5 @@ if __name__ == "__main__":
                 endi+=shift
         
         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, ori=ori, rep=rep)
-        torchaudio.save(save_path+ori+"_"+os.listdir(path_audio)[iter]+".pkl", audio.cpu(), sample_rate=FS)
+        torchaudio.save(save_path+ori+"_"+os.listdir(path_audio)[iter]+".wav", audio.cpu(),sample_rate=FS)
 #         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, device=torch.device('cpu'))

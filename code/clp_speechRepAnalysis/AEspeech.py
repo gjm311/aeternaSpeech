@@ -233,6 +233,11 @@ class AEspeech:
         """
         FS=config['general']['FS']
         fs,signal=read(wav_file)
+        try:
+            signal=np.mean(signal,axis=1)
+        except:
+            signal=signal
+        
         if fs!=FS:
             raise ValueError(str(fs)+" is not a valid sampling frequency")
             
@@ -248,19 +253,17 @@ class AEspeech:
         TIME_STEPS=config['wavelet']['TIME_STEPS']
         OVRLP=config['wavelet']['OVRLP']
         NFR=int(signal.shape[0]*1000/(FS*SNIP_LEN))
-        FRAME_SIZE=int(signal.shape[0]/NFR) #Frame size in samples
-        SHIFT=int(FRAME_SIZE*OVRLP) #Time shift
         DIM=(TIME_STEPS,NBF)
 
-        NFR=int(signal.shape[0]*1000/(FS*SNIP_LEN))
-        init=0
-        endi=FRAME_SIZE
-        frames=np.zeros((NFR,endi))
-        
         signal=signal-np.mean(signal)
         signal=signal/np.max(np.abs(signal))
         
         if NFR>0:
+            FRAME_SIZE=int(signal.shape[0]/NFR) #Frame size in samples
+            SHIFT=int(FRAME_SIZE*OVRLP) #Time shift
+            init=0
+            endi=FRAME_SIZE
+            frames=np.zeros((NFR,endi))
             for k in range(NFR):
                 try:
                     frames[k,:]=signal[init:endi]
@@ -507,18 +510,30 @@ class AEspeech:
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (nf, h) or numpy array (nf, h) with the extracted features. nf: number of frames, size of the bottleneck space
         """
-        if self.rep=='narrowband' or self.rep=='broadband':
-            mat=self.compute_spectrograms(wav_file)
-            mat=self.standard(mat)
-        else:
-            mat=self.compute_cwt(wav_file,volta=0)
         
+        if self.rep=='mc_fuse':
+            self.rep='broadband'
+            bb_mat=self.compute_spectrograms(wav_file)
+            bb_mat=self.standard(bb_mat)
+            self.rep='narrowband'
+            nb_mat=self.compute_spectrograms(wav_file)
+            nb_mat=self.standard(nb_mat)
+            self.rep='mc_fuse'
             
-        if torch.cuda.is_available():
-            mat=mat.cuda()
-        to, bot=self.AE.forward(mat)
-        
-        to=self.destandard(to)
+            if torch.cuda.is_available():
+                bb_mat,nb_mat=bb_mat.cuda(),nb_mat.cuda()
+            bb,nb,bot=self.AE.forward(bb_mat,nb_mat)
+        else:
+            if self.rep=='narrowband' or self.rep=='broadband':
+                mat=self.compute_spectrograms(wav_file)
+                mat=self.standard(mat)
+            else:
+                mat=self.compute_cwt(wav_file,volta=0)
+
+
+            if torch.cuda.is_available():
+                mat=mat.cuda()
+            to, bot=self.AE.forward(mat)
         
         if return_numpy:
             if torch.cuda.is_available():
@@ -535,21 +550,47 @@ class AEspeech:
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (nf, 128) or numpy array (nf, 128) with the extracted features. nf: number of frames
         """
-        if self.rep=='narrowband' or self.rep=='broadband':
-            mat=self.compute_spectrograms(wav_file)
-            mat=self.standard(mat)
-        else:
-            mat=self.compute_cwt(wav_file,volta=0)
-        
+        if self.rep=='mc_fuse':
+            self.rep='broadband'
+            bb_mat=self.compute_spectrograms(wav_file)
+            bb_mat=self.standard(bb_mat)
+            self.rep='narrowband'
+            nb_mat=self.compute_spectrograms(wav_file)
+            nb_mat=self.standard(nb_mat)
+            self.rep='mc_fuse'
             
-        if torch.cuda.is_available():
-            mat=mat.cuda()
-        to, bot=self.AE.forward(mat)
+            if torch.cuda.is_available():
+                bb_mat,nb_mat=bb_mat.cuda(),nb_mat.cuda()
+            bb_out,nb_out=self.AE.forward(bb_mat,nb_mat,volta=0)
+            
+            bb_out=self.destandard(bb_out)
+            nb_out=self.destandard(nb_out)
+            
+            bb_error=(bb_mat[:,0,:,:]-bb_out[:,0,:,:])**2
+            bb_error=torch.mean(bb_error,2).detach().numpy()
+            bb_error=(bb_error-np.mean(bb_error))/np.std(bb_error)
+            nb_error=(nb_mat[:,0,:,:]-nb_out[:,0,:,:])**2
+            nb_error=torch.mean(nb_error,2).detach().numpy()
+            nb_error=(nb_error-np.mean(nb_error))/np.std(nb_error)
+            error=np.concatenate((bb_error,nb_error),axis=1)
+            
+            
+        else:
+            if self.rep=='narrowband' or self.rep=='broadband':
+                mat=self.compute_spectrograms(wav_file)
+                mat=self.standard(mat)
+            else:
+                mat=self.compute_cwt(wav_file,volta=0)
 
-        to=self.destandard(to)
-        mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
-        error=torch.mean(mat_error,2).detach().numpy()
-        error=(error-np.mean(error))/np.std(error)
+
+            if torch.cuda.is_available():
+                mat=mat.cuda()
+            to, bot=self.AE.forward(mat)
+
+            to=self.destandard(to)
+            mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
+            error=torch.mean(mat_error,2).detach().numpy()
+            error=(error-np.mean(error))/np.std(error)
                
         if return_numpy:
             return error

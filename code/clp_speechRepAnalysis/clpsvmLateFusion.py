@@ -14,6 +14,7 @@ from sklearn.svm import SVC
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.model_selection import GridSearchCV
 import joblib
+import collections
 from sklearn.preprocessing import StandardScaler
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.decomposition import PCA
@@ -71,6 +72,113 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     return feat_vecs
        
 
+def featAgg(model,reps,spk_path):
+    global UTTERS
+    
+    allClpNames=[]
+    allHcNames=[]
+    for u_idx,utter in enumerate(UTTERS):
+        clp_path=spk_path+'/'+utter+"/clp/"
+        hc_path=spk_path+'/'+utter+"/hc/"   
+        clpNames=[name for name in os.listdir(clp_path) if '.wav' in name]
+        hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
+        allClpNames.extend([clpName for clpName in clpNames if clpName not in allClpNames])
+        allHcNames.extend([hcName for hcName in hcNames if hcName not in allHcNames])
+    
+    clpNames_count=dict(collections.Counter([name.split('_')[0] for name in allClpNames]))
+    hcNames_count=dict(collections.Counter([name.split('_')[0] for name in allHcNames]))
+    clpNames=list(np.unique([name.split('_')[0] for name in allClpNames]))
+    hcNames=list(np.unique([name.split('_')[0] for name in allHcNames]))
+    
+    #aggregate all spk data per rep and store pca compressed data and ncs
+    rep_dict={rep:{'data':[], 'ncs':0} for rep in reps}
+    for rIdx,rep in enumerate(reps):
+        clpKeys=np.zeros(len(clpNames))
+        hcKeys=np.zeros(len(hcNames))
+        spkdict={spk:[] for spk in ['clp','hc']}
+        spkdict['clp']={clp:[] for clp in clpNames_count.keys()}
+        spkdict['hc']={hc:[] for hc in hcNames_count.keys()}
+        for itr,name in enumerate(clpNames_count.keys()):
+            spkdict['clp'][name]=[]
+        for itr,name in enumerate(hcNames_count.keys()):
+            spkdict['hc'][name]=[]
+         
+        for uIdx,utter in enumerate(UTTERS):
+            clp_path=spk_path+'/'+utter+"/clp/"
+            hc_path=spk_path+'/'+utter+"/hc/"                 
+            clpFeats=getFeats(model,UNITS,rep,clp_path,utter,'clp')
+            hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
+            clpAll=[c.split('_')[0] for c in np.unique(clpFeats['wav_file'])]
+            hcAll=[h.split('_')[0] for h in np.unique(hcFeats['wav_file'])]
+            
+            for ii,tr in enumerate(clpAll):
+                inner_ks=np.array([c.split('_')[0] for c in clpFeats['wav_file']])
+                clpTrBns=clpFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
+                clpTrBns=np.array([np.mean(clpTrBns,axis=0),np.std(clpTrBns,axis=0),skew(clpTrBns,axis=0),kurtosis(clpTrBns,axis=0)])
+                clpTrErrs=clpFeats['error'][np.where(inner_ks==tr.split('_')[0])]
+                clpTrErrs=np.array([np.mean(clpTrErrs,axis=0),np.std(clpTrErrs,axis=0),skew(clpTrErrs,axis=0),kurtosis(clpTrErrs,axis=0)])
+                ovrall_idx=clpNames.index(tr.split('_')[0])
+                if clpKeys[ovrall_idx]==0:
+                    spkdict['clp'][tr.split('_')[0]]=np.expand_dims(np.concatenate((clpTrBns,clpTrErrs),axis=1).T,axis=0)
+                    clpKeys[ovrall_idx]=1
+                else:
+                    new=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                    spkdict['clp'][tr.split('_')[0]]=np.concatenate((spkdict['clp'][tr.split('_')[0]],np.expand_dims(new,axis=0)),axis=0)
+                    
+            for ii,tr in enumerate(hcAll):
+                inner_ks=np.array([h.split('_')[0] for h in hcFeats['wav_file']])
+                hcTrBns=hcFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
+                hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
+                hcTrErrs=hcFeats['error'][np.where(inner_ks==tr.split('_')[0])]
+                hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
+                ovrall_idx=hcNames.index(tr.split('_')[0])
+                if hcKeys[ovrall_idx]==0:
+                    spkdict['hc'][tr.split('_')[0]]=np.expand_dims(np.concatenate((hcTrBns,hcTrErrs),axis=1).T,axis=0)
+                    hcKeys[ovrall_idx]=1
+                else:
+                    new=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                    spkdict['hc'][tr.split('_')[0]]=np.concatenate((spkdict['hc'][tr.split('_')[0]],np.expand_dims(new,axis=0)),axis=0)
+        
+        rep_dict[rep]['data'],rep_dict[rep]['ncs']=getDataset(spkdict,clpNames,hcNames)
+    
+    pca_xAlls=[rep_dict[rep]['data'] for rep in reps]
+    rncs=[rep_dict[rep]['ncs'] for rep in reps]
+    return pca_xAlls,rncs,clpNames,hcNames,{**clpNames_count,**hcNames_count}
+    
+    
+def getDataset(spkdict,clpNames,hcNames):
+    num_spks=len(clpNames)    
+    
+    for ni,name in enumerate(clpNames):
+        if ni==0:
+            clpFeats=spkdict['clp'][name]
+        else:
+            clpFeats=np.concatenate((clpFeats,spkdict['clp'][name]),axis=0)
+    for ni,name in enumerate(hcNames):
+        if ni==0:
+            hcFeats=spkdict['hc'][name]
+        else:
+            hcFeats=np.concatenate((hcFeats,spkdict['hc'][name]),axis=0)
+    
+    pca_x,ncs=pcaFeats(clpFeats,hcFeats)       
+    return pca_x,ncs
+        
+def pcaFeats(clps,hcs): 
+    clpXAll=np.reshape(clps,(clps.shape[0],clps.shape[1]*4))
+    hcXAll=np.reshape(hcs,(hcs.shape[0],clps.shape[1]*4))  
+    xAll=np.concatenate((clpXAll,hcXAll),axis=0)
+    st_xAll=StandardScaler().fit_transform(pd.DataFrame(xAll))
+    
+    pca = PCA(n_components=min(xAll.shape[0],xAll.shape[1]))
+    pca.fit_transform(st_xAll)
+    variance = pca.explained_variance_ratio_ #calculate variance ratios
+    var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
+    ncs=np.count_nonzero(var<90)
+    pca = PCA(n_components=ncs)
+    pca_xAll=pca.fit_transform(st_xAll)
+    return pca_xAll,ncs
+    
+    
     
 if __name__=="__main__":
 
@@ -95,6 +203,7 @@ if __name__=="__main__":
         sys.argv[3] = '/'+sys.argv[3]
     if sys.argv[3][-1] !='/':
         sys.argv[3] = sys.argv[3]+'/'
+    spk_path=PATH+sys.argv[3]
         
     save_path=PATH+"/clpSpanish/classResults/svm/"
     if not os.path.exists(save_path):
@@ -102,167 +211,110 @@ if __name__=="__main__":
     
     reps=REPS[:nreps]   
     num_utters=len(UTTERS)
+           
+    #get compressed data, n_components, and file_name list 
+    pca_xAlls,rncs,clpNames,hcNames,name_count=featAgg(model,reps,spk_path)
+    spks=clpNames+hcNames
+    num_spks=len(spks)
+    num_clps=len(clpNames)
+    num_hcs=len(hcNames)
     
-    mfda_path=PATH+"/clpSpanish/"
-    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    clp_mfdas=mfdas[0:50]
-    hc_mfdas=mfdas[50:]
-
-    for nrep,rep in enumerate(reps):
-        if rep=='wvlt':
-            num_feats=config['wavelet']['NBF']+UNITS
+    #get num preceding utterances (due to each spk not performing each utter).
+    prevsAll={nm:0 for nm in spks}
+    for nItr,name in enumerate(spks):
+        if nItr==0:
+            prevsAll[name]=0
         else:
-            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
-        clps=np.zeros((50*num_utters,num_feats,4))
-        hcs=np.zeros((50*num_utters,num_feats,4))
-        for uIdx,utter in enumerate(UTTERS):
-            curr_best=0
-            clp_path=PATH+sys.argv[3]+'/'+utter+"/clp/"
-            hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
-            clpNames=[name for name in os.listdir(clp_path) if '.wav' in name]
-            hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
-            clpNames.sort()
-            hcNames.sort()
-            spks=clpNames+hcNames
-            num_spks=len(spks)
-            num_clp=len(clpNames)
-            num_hc=len(hcNames)
-            clpFeats=getFeats(model,UNITS,rep,clp_path,utter,'clp')
-            hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
-            clpAll=np.unique(clpFeats['wav_file'])
-            hcAll=np.unique(hcFeats['wav_file'])
-            clpIds=np.arange(50)
-            hcIds=np.arange(50,100)
-
-            #getting bottle neck features and reconstruction error for training
-            for ii,tr in enumerate(clpAll):
-                tritr=clpIds[ii]
-                clpTrBns=clpFeats['bottleneck'][np.where(clpFeats['wav_file']==spks[tritr])]
-                clpTrBns=np.array([np.mean(clpTrBns,axis=0),np.std(clpTrBns,axis=0),skew(clpTrBns,axis=0),kurtosis(clpTrBns,axis=0)])
-                clpTrErrs=clpFeats['error'][np.where(clpFeats['wav_file']==spks[tritr])]
-                clpTrErrs=np.array([np.mean(clpTrErrs,axis=0),np.std(clpTrErrs,axis=0),skew(clpTrErrs,axis=0),kurtosis(clpTrErrs,axis=0)])
-                clps[(ii*num_utters)+uIdx,:,:]=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
-            for ii,tr in enumerate(hcAll):
-                tritr=hcIds[ii]
-                hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
-                hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
-                hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
-                hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
-                hcs[(ii*num_utters)+uIdx,:,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
-
-        clpXAll=np.reshape(clps,(clps.shape[0],num_feats*4))
-        hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
-        xAll=np.concatenate((clpXAll,hcXAll),axis=0)
-        st_xAll=StandardScaler().fit_transform(pd.DataFrame(xAll))
-
-        pca = PCA(n_components=min(xAll.shape[0],xAll.shape[1]))
-        pca.fit_transform(st_xAll)
-        variance = pca.explained_variance_ratio_ #calculate variance ratios
-        var=np.cumsum(np.round(pca.explained_variance_ratio_, decimals=3)*100)
-        if rep=='narrowband':
-            nb_ncs=np.count_nonzero(var<90)
-            pca = PCA(n_components=nb_ncs)
-            nb_pca_xAll=pca.fit_transform(st_xAll)
-        elif rep=='broadband':
-            bb_ncs=np.count_nonzero(var<90)
-            pca = PCA(n_components=bb_ncs)
-            bb_pca_xAll=pca.fit_transform(st_xAll)
-        elif rep=='wvlt':
-            wvlt_ncs=np.count_nonzero(var<90)
-            pca = PCA(n_components=wvlt_ncs)
-            wvlt_pca_xAll=pca.fit_transform(st_xAll)
-    
-    if 'wvlt' in reps:
-        rncs=[nb_ncs,bb_ncs,wvlt_ncs]
-        pca_xAlls=[nb_pca_xAll,bb_pca_xAll,wvlt_pca_xAll]
-    else:
-        rncs=[nb_ncs,bb_ncs]
-        pca_xAlls=[nb_pca_xAll,bb_pca_xAll]
-    
+            for prev in spks[:nItr]:
+                prevsAll[name]+=name_count[prev]
+                
     #split data into training and test with multiple iterations
     num_clpHc_tests=config['svm']['tst_spks']#must be even (same # of test clps and hcs per iter)
-    nv=config['svm']['val_size']#number of validation speakers per split#must be even and a divisor of num_spks (same # of test clps and hcs per iter)
-    if  np.mod(num_clpHc_tests,2)!=0:
-        print("number of test spks must be even...")
-        sys.exit()
-    if  np.mod(100,num_clpHc_tests)!=0:
-        print("number of test spks must be a divisor of 100...")
-        sys.exit()
-    
+    nv=config['svm']['val_size']#number of validation speakers per split    
     total_itrs=config['svm']['iterations']
-    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0, 'mFDA_spear_corr':{itr:{idx:{utter:0 for utter in UTTERS} for idx in np.arange(100)} for itr in range(total_itrs)},'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
-    threshes=np.zeros((nreps,total_itrs*int(num_spks/num_clpHc_tests)))
-                                  
+    in_iters=config['svm']['in_iters']
+    results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0, 'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    
     for o_itr in range(total_itrs):
         clp_files=clpNames
         hc_files=hcNames
-        predictions=pd.DataFrame(index=np.arange(100), columns=['predictions'])
         
-        for itr in range(int(num_spks/num_clpHc_tests)):
+        for itr in range(in_iters):
+            #get test ids and data array index
             clpCurrs=[clp_files[idx] for idx in random.sample(range(0,len(clp_files)),int(num_clpHc_tests/2))]
             hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),int(num_clpHc_tests/2))]
+            spkCurrs=clpCurrs+hcCurrs
             clp_files=[clp for clp in clp_files if clp not in clpCurrs]
             hc_files=[hc for hc in hc_files if hc not in hcCurrs]
-
-            clpIds=[spks.index(clpCurr) for clpCurr in clpCurrs]
-            hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
-                                  
-            diffs=np.zeros((nreps,(num_spks-num_clpHc_tests)*num_utters))
-            tst_diffs=np.zeros((nreps,(num_clpHc_tests)*num_utters))
-            preds=np.zeros((nreps,(num_spks-num_clpHc_tests)*num_utters))
-            tst_preds=np.zeros((nreps,(num_clpHc_tests)*num_utters))
+            
+            prevs={nm:0 for nm in spkCurrs}
+            for nItr,name in enumerate(spkCurrs):
+                if nItr==0:
+                    prevs[name]=0
+                else:
+                    for prev in spkCurrs[:nItr]:
+                        prevs[name]+=name_count[prev]
+                        
+            if not hc_files:
+                hc_files=hcNames
+            if len(hc_files)<num_clpHc_tests//2:
+                left_ids=[lid for lid in np.arange(len(hcNames)) if hcNames[lid] not in hc_files]
+                add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
+                hc_files.extend(np.array(hcNames)[add_ids])
+                
+            ntst=prevs[spkCurrs[-1]]+name_count[spkCurrs[-1]]
+            ntr=pca_xAlls[0].shape[0]-ntst
+                
+            #get trainee ids and data array index
+            clpTrainees=[spk for spk in clpNames if spk not in clpCurrs]
+            hcTrainees=[spk for spk in hcNames if spk not in hcCurrs]
+            trainees=clpTrainees+hcTrainees
+            
+            trPrevs={nm:0 for nm in trainees}
+            ntr_clp=0
+            ntr_hc=0
+            for nItr,name in enumerate(trainees):
+                if nItr==0:
+                    trPrevs[name]=0
+                    ntr_clp+=name_count[name]
+                else:
+                    if 'CLP' in name:
+                        ntr_clp+=name_count[name]
+                    elif 'HC' in name:
+                        ntr_hc+=name_count[name]
+                    for prev in trainees[:nItr]:
+                        trPrevs[name]+=name_count[prev]        
+            
+            diffs=np.zeros((nreps,ntr))
+            tst_diffs=np.zeros((nreps,ntst))
             
             for nrep,(pca_xAll,ncs) in enumerate(zip(pca_xAlls,rncs)):
-                clpTest=np.zeros(((num_clpHc_tests//2)*num_utters,ncs))
-                hcTest=np.zeros(((num_clpHc_tests//2)*num_utters,ncs))
-                for ii,clpItr in enumerate(clpIds):
-                    clpTest[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[clpItr*num_utters:(clpItr+1)*num_utters,:]
-                for ii,hcItr in enumerate(hcIds):
-                    hcTest[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[hcItr*num_utters:(hcItr+1)*num_utters,:]
+                xTest=np.zeros((ntst,ncs))
+                yTest=np.concatenate((np.ones(ntst), np.zeros(ntst)))
+                xTrain=np.zeros((ntr,ncs))
+                yTrain=np.concatenate((np.ones((ntr_clp)), np.zeros((ntr_hc))))
+                for ii,tstName in enumerate(spkCurrs):
+                    if ii==len(spkCurrs)-1:
+                        xTest[prevs[tstName]:]=pca_xAll[prevsAll[tstName]:prevsAll[tstName]+name_count[tstName]]
+                    else:
+                        xTest[prevs[tstName]:prevs[spkCurrs[ii+1]]]=pca_xAll[prevsAll[tstName]:prevsAll[tstName]+name_count[tstName]]
+                for ii,trName in enumerate(trainees):
+                    if ii==len(trainees)-1:
+                        xTrain[trPrevs[trName]:]=pca_xAll[prevsAll[trName]:prevsAll[trName]+name_count[trName]]
+                    else:
+                        xTrain[trPrevs[trName]:trPrevs[trainees[ii+1]]]=pca_xAll[prevsAll[trName]:prevsAll[trName]+name_count[trName]]
 
-                clpTrainees=[spk for idx,spk in enumerate(clpNames) if spk not in clpCurrs]
-                hcTrainees=[spk for idx,spk in enumerate(hcNames) if spk not in hcCurrs]
-                clpTrainIds=[spks.index(tr) for tr in clpTrainees]
-                hcTrainIds=[spks.index(tr) for tr in hcTrainees]
-
-                clpTrain=np.zeros(((num_clp-int(num_clpHc_tests/2))*num_utters,ncs))
-                hcTrain=np.zeros(((num_hc-int(num_clpHc_tests/2))*num_utters,ncs))
-                for ii,clpItr in enumerate(clpTrainIds):
-                    clpTrain[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[clpItr*num_utters:(clpItr+1)*num_utters,:]
-                for ii,hcItr in enumerate(hcTrainIds):
-                    hcTrain[ii*num_utters:(ii+1)*num_utters,:]=pca_xAll[hcItr*num_utters:(hcItr+1)*num_utters,:]
-                xTrain=np.concatenate((clpTrain,hcTrain),axis=0)
-                clpYTrain=np.ones((clpTrain.shape[0])).T
-                hcYTrain=np.zeros((hcTrain.shape[0])).T
-                yTrain=np.concatenate((clpYTrain,hcYTrain),axis=0)
-                
-                xTest=np.concatenate((clpTest,hcTest),axis=0)
-                clpYTest=np.ones((clpTest.shape[0])).T
-                hcYTest=np.zeros((clpTest.shape[0])).T
-                yTest=np.concatenate((clpYTest,hcYTest),axis=0)
-                
-                #repeat m-fda score of a given speaker for every segment/utterance associated with said speaker.
-                mfda_yTrain=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[clpTrainIds+hcTrainIds]))
-                mfda_yTest=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[clpIds+hcIds]))
                 param_grid = [
                   {'C':np.logspace(0,5,25), 'gamma':np.logspace(-8,-4,25), 'degree':[1],'kernel': ['rbf']},
                     ]
 
-                cv = StratifiedShuffleSplit(n_splits=4, test_size=0.2, random_state=42)
+                cv = StratifiedShuffleSplit(n_splits=4, test_size=nv, random_state=42)
+
                 grid = GridSearchCV(SVC(probability=True), param_grid=param_grid, cv=cv)
-                mfda_grid = GridSearchCV(SVC(probability=True), param_grid=param_grid, cv=cv)
                 grid.fit(xTrain, yTrain)
-                mfda_grid.fit(xTrain,mfda_yTrain)
                 grid=svm.SVC(C=grid.best_params_['C'],degree=grid.best_params_['degree'],gamma=grid.best_params_['gamma'],
                                     kernel=grid.best_params_['kernel'], probability=True)
-                mfda_grid=svm.SVC(C=mfda_grid.best_params_['C'],degree=mfda_grid.best_params_['degree'],gamma=mfda_grid.best_params_['gamma'],
-                                  kernel=mfda_grid.best_params_['kernel'], probability=True)
-
                 grid.fit(xTrain,yTrain)
-                mfda_grid.fit(xTrain,mfda_yTrain)
-                
-                preds[nrep,:]=mfda_grid.predict(xTrain)
-                tst_preds[nrep,:]=mfda_grid.predict(xTest)
                 
                 tr_bin_class=grid.predict_proba(xTrain)
                 diffs[nrep,:]=tr_bin_class[:,0]-tr_bin_class[:,1]
@@ -273,33 +325,26 @@ if __name__=="__main__":
             diff_tpls=tuple((x1,x2) for x1,x2 in zip(diffs[0,:],diffs[1,:]))
             clf = SGDClassifier(loss="hinge", penalty="l2")
             clf.fit(diff_tpls, yTrain)
-            tr_acc=sum(clf.predict(diff_tpls[0:len(clpYTrain)]))+sum(np.mod(clf.predict(diff_tpls)[len(clpYTrain):]+1,2))/len(yTrain)
+            tr_acc=clf.score(diff_tpls,yTrain)
             calibrator=CalibratedClassifierCV(clf, cv='prefit')
             modCal=calibrator.fit(diff_tpls, yTrain)
 
             tst_diff_tpls=tuple((x1,x2) for x1,x2 in zip(tst_diffs[0,:],tst_diffs[1,:]))
-            tst_acc=sum(clf.predict(tst_diff_tpls[0:len(clpYTest)]))+sum(np.mod(clf.predict(tst_diff_tpls)[len(clpYTest):]+1,2))/len(yTest)
+            tst_acc=clf.score(diff_tpls,yTrain)
             bin_class=modCal.predict_proba(tst_diff_tpls)
             
-            #predict m-fdas
-            pred_tpls=tuple((x1,x2) for x1,x2 in zip(preds[0,:],preds[1,:]))
-            mfda_clf = SGDClassifier(loss="hinge", penalty="l2")
-            mfda_clf.fit(pred_tpls, mfda_yTrain)       
-            
-            tst_pred_tpls=tuple((x1,x2) for x1,x2 in zip(tst_preds[0,:],tst_preds[1,:]))
-            #predict speaker mfdas for each utterance (will average over after predictions of all spks made).
-            for idItr,curr_id in enumerate(clpIds+hcIds):
-                results['Data']['mFDA_spear_corr'][o_itr][curr_id]=mfda_clf.predict(np.array(tst_pred_tpls[idItr]).reshape(1,-1))
-
             class_report=classification_report(yTest,grid.predict(xTest))
             results['Data']['train_acc']+=tr_acc*(1/(int(num_spks/num_clpHc_tests)*total_itrs))
             results['Data']['test_acc']+=tst_acc*(1/(int(num_spks/num_clpHc_tests)*total_itrs))
             results['Data']['class_report'][o_itr][itr]=class_report  
-            for cpi,(clpId,hcId) in enumerate(zip(clpIds,hcIds)):          
-                results['Data']['bin_class'][o_itr][clpId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
-                results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_clpHc_tests//2)*num_utters:(cpi+(num_clpHc_tests//2)+1)*num_utters]
-        
-#         results['Data']['mFDA_spear_corr']+=stats.spearmanr(predictions['predictions'].values,mfdas)[0]/total_itrs     
+            for cpi,(clpName,hcName) in enumerate(zip(clpCurrs,hcCurrs)):   
+                if cpi == len(clpNames)-1:
+                    results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:]     
+                    results['Data']['bin_class'][o_itr][hcName]=bin_class[prevs[hcName]:]
+                else:
+                    results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:prevs[clpCurrs[cpi+1]]]     
+                    results['Data']['bin_class'][o_itr][hcName]=bin_class[prevs[hcName]:prevs[hcCurrs[cpi+1]]]
+           
     
     if 'wvlt' in reps:
         results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")

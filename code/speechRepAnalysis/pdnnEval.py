@@ -154,7 +154,7 @@ class testData(data.Dataset):
 if __name__=="__main__":
 
     if len(sys.argv)!=4:
-        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <broadband, narrowband, wvlt, early_fuse, mc_fuse> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE'> <broadband, narrowband, wvlt, early_fuse, mc_fuse> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/'
     
@@ -162,12 +162,12 @@ if __name__=="__main__":
     if sys.argv[1] in MODELS:
         mod=sys.argv[1]
     else:
-        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <broadband, narrowband, wvlt, early_fuse, mc_fuse> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE'> <broadband, narrowband, wvlt, early_fuse, mc_fuse> <pd path>")
         sys.exit()
     
     
     if sys.argv[2] not in ['broadband', 'narrowband', 'wvlt', 'early_fuse', 'mc_fuse']:
-        print("python pdnnEvalAgg.py <'CAE','RAE', or 'ALL'> <broadband, narrowband, wvlt, early_fuse, mc_fuse> <pd path>")
+        print("python pdnnEvalAgg.py <'CAE','RAE'> <broadband, narrowband, wvlt, early_fuse, mc_fuse> <pd path>")
         sys.exit()
     else:
         rep_typ=sys.argv[2]

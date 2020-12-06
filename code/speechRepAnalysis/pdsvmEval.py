@@ -71,55 +71,18 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     
     return feat_vecs
        
-
-    
-if __name__=="__main__":
-
-    if len(sys.argv)!=4:
-        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
-        sys.exit()        
-    #TRAIN_PATH: './pdSpanish/speech/'    
-    
-    if sys.argv[1] in MODELS:
-        model=sys.argv[1]
-    else:
-        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
-        sys.exit()
-    
-    if sys.argv[2] in REPS:
-        rep=sys.argv[2]
-    else:
-        print("python pdsvmEvalAgg.py <'CAE','RAE', or 'ALL'> <'broadband', 'narrowband' or 'wvlt'> <pd path>")
-        sys.exit()    
-          
-    if sys.argv[3][0] !='/':
-        sys.argv[3] = '/'+sys.argv[3]
-    if sys.argv[3][-1] !='/':
-        sys.argv[3] = sys.argv[3]+'/'
-        
-    save_path=PATH+"/pdSpanish/classResults/svm/"
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-        
-    mfda_path=PATH+"/pdSpanish/"
-    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    pd_mfdas=mfdas[0:50]
-    hc_mfdas=mfdas[50:]
-    
-    if rep=='wvlt':
-        num_feats=config['wavelet']['NBF']+UNITS
-    else:
-        num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
-                
-    data={utter:{} for utter in UTTERS}
-    
+def featAgg(model,rep,spk_path,num_feats,ef,feats):
     num_utters=len(UTTERS)
     pds=np.zeros((50*num_utters,num_feats,4))
     hcs=np.zeros((50*num_utters,num_feats,4))
+    if ef==0:
+        reps=[rep]
+    else:
+        reps=rep
+        
     for uIdx,utter in enumerate(UTTERS):
-        curr_best=0
-        pd_path=PATH+sys.argv[3]+'/'+utter+"/pd/"
-        hc_path=PATH+sys.argv[3]+'/'+utter+"/hc/"   
+        pd_path=spk_path+'/'+utter+"/pd/"
+        hc_path=spk_path+'/'+utter+"/hc/"   
         pdNames=[name for name in os.listdir(pd_path) if '.wav' in name]
         hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
         pdNames.sort()
@@ -128,28 +91,39 @@ if __name__=="__main__":
         num_spks=len(spks)
         num_pd=len(pdNames)
         num_hc=len(hcNames)
-        pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
-        hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
-        pdAll=np.unique(pdFeats['wav_file'])
-        hcAll=np.unique(hcFeats['wav_file'])
-        pdIds=np.arange(50)
-        hcIds=np.arange(50,100)
-        
-        #getting bottle neck features and reconstruction error for training
-        for ii,tr in enumerate(pdAll):
-            tritr=pdIds[ii]
-            pdTrBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[tritr])]
-            pdTrBns=np.array([np.mean(pdTrBns,axis=0),np.std(pdTrBns,axis=0),skew(pdTrBns,axis=0),kurtosis(pdTrBns,axis=0)])
-            pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
-            pdTrErrs=np.array([np.mean(pdTrErrs,axis=0),np.std(pdTrErrs,axis=0),skew(pdTrErrs,axis=0),kurtosis(pdTrErrs,axis=0)])
-            pds[(ii*num_utters)+uIdx,:,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
-        for ii,tr in enumerate(hcAll):
-            tritr=hcIds[ii]
-            hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
-            hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
-            hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
-            hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
-            hcs[(ii*num_utters)+uIdx,:,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+        for rIdx,rep in enumerate(reps):
+            pdFeats=getFeats(model,UNITS,rep,pd_path,utter,'pd')
+            hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
+            pdAll=np.unique(pdFeats['wav_file'])
+            hcAll=np.unique(hcFeats['wav_file'])
+            pdIds=np.arange(50)
+            hcIds=np.arange(50,100)
+            if ef==1:
+                if rep=='wvlt':
+                    cntr=feats[1]
+                else:
+                    cntr=feats[0]
+            #getting bottle neck features and reconstruction error for training
+            for ii,tr in enumerate(pdAll):
+                tritr=pdIds[ii]
+                pdTrBns=pdFeats['bottleneck'][np.where(pdFeats['wav_file']==spks[tritr])]
+                pdTrBns=np.array([np.mean(pdTrBns,axis=0),np.std(pdTrBns,axis=0),skew(pdTrBns,axis=0),kurtosis(pdTrBns,axis=0)])
+                pdTrErrs=pdFeats['error'][np.where(pdFeats['wav_file']==spks[tritr])]
+                pdTrErrs=np.array([np.mean(pdTrErrs,axis=0),np.std(pdTrErrs,axis=0),skew(pdTrErrs,axis=0),kurtosis(pdTrErrs,axis=0)])
+                if ef==0:
+                    pds[(ii*num_utters)+uIdx,:,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
+                else:
+                    pds[(ii*num_utters)+uIdx,rIdx*cntr:(rIdx+1)*cntr,:]=np.concatenate((pdTrBns,pdTrErrs),axis=1).T
+            for ii,tr in enumerate(hcAll):
+                tritr=hcIds[ii]
+                hcTrBns=hcFeats['bottleneck'][np.where(hcFeats['wav_file']==spks[tritr])]
+                hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
+                hcTrErrs=hcFeats['error'][np.where(hcFeats['wav_file']==spks[tritr])]
+                hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
+                if ef==0:
+                    hcs[(ii*num_utters)+uIdx,:,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                else:
+                    hcs[(ii*num_utters)+uIdx,rIdx*cntr:(rIdx+1)*cntr,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
                 
     pdXAll=np.reshape(pds,(pds.shape[0],num_feats*4))
     hcXAll=np.reshape(hcs,(hcs.shape[0],num_feats*4))  
@@ -164,6 +138,74 @@ if __name__=="__main__":
     pca = PCA(n_components=ncs)
     pca_xAll=pca.fit_transform(st_xAll)
     
+    return pca_xAll,ncs,pdNames,hcNames
+    
+    
+    
+if __name__=="__main__":
+
+    if len(sys.argv)!=4:
+        print("python pdsvmEval.py <'CAE','RAE'> <broadband, narrowband, wvlt, early_fuse2,early_fuse3, mc_fuse> <pd path>")
+        sys.exit()        
+    #TRAIN_PATH: './pdSpanish/speech/'    
+    
+    if sys.argv[1] in MODELS:
+        mod=sys.argv[1]
+    else:
+        print("python pdsvmEval.py <'CAE','RAE', or 'ALL'> <broadband, narrowband, wvlt, early_fuse2,early_fuse3, mc_fuse> <pd path>")
+        sys.exit()
+    
+    if sys.argv[2] not in ['broadband', 'narrowband', 'wvlt', 'early_fuse2', 'early_fuse3', 'mc_fuse']:
+        print("python pdsvmEval.py <'CAE','RAE', or 'ALL'> <broadband, narrowband, wvlt, early_fuse2,early_fuse3, mc_fuse> <pd path>")
+        sys.exit()
+    else:
+        rep_typ=sys.argv[2]
+    
+    if sys.argv[3][0] !='/':
+        sys.argv[3] = '/'+sys.argv[3]
+    if sys.argv[3][-1] !='/':
+        sys.argv[3] = sys.argv[3]+'/'
+    spk_path=PATH+sys.argv[3]
+        
+    save_path=PATH+"/pdSpanish/classResults/svm/"
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+        
+    ef=0
+    if rep_typ in ['broadband','narrowband','wvlt']:
+        rep=rep_typ
+        feats=[]
+        if rep=='wvlt':
+            num_feats=config['wavelet']['NBF']+UNITS
+        else:
+            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
+    elif rep_typ=='mc_fuse':
+        feats=[]
+        rep='mc_fuse'
+        num_feats=2*config['mel_spec']['INTERP_NMELS']+UNITS
+    elif rep_typ=='early_fuse2':
+        rep=['broadband','narrowband']
+        num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)
+        feats=[config['mel_spec']['INTERP_NMELS']+UNITS]
+        ef=1
+    elif rep_typ=='early_fuse3':
+        rep=['broadband','narrowband','wvlt']
+        num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)+config['wavelet']['NBF']+UNITS
+        feats=[config['mel_spec']['INTERP_NMELS']+UNITS, config['wavelet']['NBF']+UNITS]
+        ef=1
+        
+    #get compressed data, n_components, and file_name list 
+    pca_xAll,ncs,pdNames,hcNames=featAgg(mod,rep,spk_path,num_feats,ef,feats)
+    spks=pdNames+hcNames
+    num_spks=len(spks)
+    num_pd=len(pdNames)
+    num_hc=len(hcNames)
+    
+    mfda_path=PATH+"/pdSpanish/"
+    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
+    pd_mfdas=mfdas[0:50]
+    hc_mfdas=mfdas[50:]
+    
     #split data into training and test with multiple iterations
     num_pdHc_tests=config['svm']['tst_spks']#must be even (same # of test pds and hcs per iter)
     nv=config['svm']['val_size']#number of validation speakers per split#must be even and a divisor of num_spks (same # of test pds and hcs per iter)
@@ -174,6 +216,7 @@ if __name__=="__main__":
         print("number of test spks must be a divisor of 100...")
         sys.exit()
     
+    num_utters=len(UTTERS)
     total_itrs=config['svm']['iterations']
     results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'mFDA_spear_corr':{itr:{idx:{utter:0 for utter in UTTERS} for idx in np.arange(100)} for itr in range(total_itrs)},'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
     
@@ -269,7 +312,17 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
                 
-    results.to_pickle(save_path+model+'_'+rep+"_aggResults.pkl")
+                
+    if rep_typ=='mc_fuse':
+        results.to_pickle(save_path+model+"_mcFusionResults.pkl")
+    if rep_typ in ['broadband','narrowband','wvlt']:
+        results.to_pickle(save_path+model+'_'+rep+"_aggResults.pkl")
+    if rep_typ=='early_fuse':
+        if 'wvlt' in reps:
+            results.to_pickle(save_path+model+"_wvlt_earlyFusionResults.pkl")
+        else:
+            results.to_pickle(save_path+model+"_earlyFusionResults.pkl")
+                
 
 
 

@@ -48,7 +48,8 @@
         "iterations": 3,
         "tst_spks":30,
         "val_size":0.05685,
-        "nsplits":4
+        "nsplits":4,
+        "in_iters":9
         },
     "dnn": {
         "dropout": 0.5,

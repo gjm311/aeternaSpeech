@@ -21,7 +21,7 @@ import toolbox.traintestsplit as tts
 if __name__ == "__main__":
 
     if len(sys.argv)!=4:
-        print("python get_reconError.py <CAE or RAE> <narrowband or broadband or wvlt> <path_speech>")
+        print("python get_reconError.py <CAE or RAE> <narrowband or broadband or wvlt or mc_fuse> <path_speech>")
         sys.exit()
     
         

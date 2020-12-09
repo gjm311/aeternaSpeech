@@ -368,24 +368,24 @@ class AEspeech:
                 ax1.set_yticklabels(map(str, f))
                 ax1.set_xticks(np.linspace(0,spectrograms1.shape[3],6))
                 ax1.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
-                ax1.set_ylabel("Frequency (Hz)")
-                ax1.set_xlabel("Time (ms)")
-                if title=="":
-                    ax1.set_title(self.rep+" mel-spectrogram")
-                else:
-                    ax1.set_title(title)
+                ax1.set_ylabel("Frequency (Hz)",fontsize=12)
+                ax1.set_xlabel("Time (ms)",fontsize=12)
+#                 if title=="":
+#                     ax1.set_title(self.rep+" mel-spectrogram",fontsize=16)
+#                 else:
+#                     ax1.set_title(title,fontsize=16)
                 to_curr=spectrograms2.data.numpy()[k,0,:,:]
                 ax2.imshow(np.flipud(to_curr), cmap=plt.cm.viridis, vmax=to_curr.max())
                 ax2.set_yticks(np.linspace(0,INTERP_NMELS,11))
                 ax2.set_yticklabels(map(str, f))
                 ax2.set_xticks(np.linspace(0,spectrograms2.shape[3],6))
                 ax2.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
-                ax2.set_ylabel("Frequency (Hz)")
-                ax2.set_xlabel("Time (ms)")
-                if title=="":
-                    ax2.set_title("reconstructed "+self.rep+" mel-spectrogram")
-                else:
-                    ax2.set_title("reconstructed "+title)
+                ax2.set_ylabel("Frequency (Hz)",fontsize=12)
+                ax2.set_xlabel("Time (ms)",fontsize=12)
+#                 if title=="":
+#                     ax2.set_title("reconstructed "+self.rep+" mel-spectrogram",fontsize=16)
+#                 else:
+#                     ax2.set_title("reconstructed "+title,fontsize=16)
                 plt.tight_layout()
                 plt.show()
 
@@ -397,13 +397,13 @@ class AEspeech:
                 fig.set_size_inches(5,3)
                 mat=spectrograms.data.numpy()[k,0,:,:]
                 ax.imshow(np.flipud(mat), cmap=plt.cm.viridis, vmax=mat.max())
-                ax.set_title(title)
+#                 ax.set_title(title,fontsize=16)
                 ax.set_yticks(np.linspace(0,INTERP_NMELS,11))
                 ax.set_yticklabels(map(str, f))
                 ax.set_xticks(np.linspace(0,spectrograms.shape[3],6))
                 ax.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
-                ax.set_ylabel("Frequency (Hz)")
-                ax.set_xlabel("Time (ms)")
+                ax.set_ylabel("Frequency (Hz)",fontsize=12)
+                ax.set_xlabel("Time (ms)",fontsize=12)
                 plt.tight_layout()
                 plt.show()
         
@@ -445,14 +445,14 @@ class AEspeech:
                 if yaxis == 'period':
                     ymesh = np.concatenate([scales_period, [scales_period[-1]]])
                     ylim  = ymesh[[-1,0]] if ylim is None else ylim
-                    ax.set_ylabel("Period" if ylabel is None else ylabel)
+                    ax.set_ylabel("Period" if ylabel is None else ylabel,fontsize=12)
                 elif yaxis == 'frequency':
                     df = freq[-1]/freq[-2]
                     ymesh = np.concatenate([freq, [freq[-1]*df]])
                     # set a useful yscale default: the scale freqs appears evenly in logscale
                     yscale = 'log' if yscale is None else yscale
                     ylim   = ymesh[[-1, 0]] if ylim is None else ylim
-                    ax.set_ylabel("Frequency" if ylabel is None else ylabel)
+                    ax.set_ylabel("Frequency" if ylabel is None else ylabel,fontsize=12)
     #                 ax.invert_yaxis()
                 else:
                     raise ValueError("yaxis must be one of 'frequency' or 'period', found "
@@ -497,18 +497,18 @@ class AEspeech:
                                      "'power' or a lambda() expression")
 
                 # labels and titles
-                if ii==0: 
-                    ax.set_title("Continuous Wavelet Transform "+sp_title+" Spectrum"
-                                 if title is None else title)
-                else:
-                    ax.set_title("Reconstructed Continuous Wavelet Transform")
+#                 if ii==0: 
+#                     ax.set_title("Continuous Wavelet Transform "+sp_title+" Spectrum"
+#                                  if title is None else title,fontsize=16)
+#                 else:
+#                     ax.set_title("Reconstructed Continuous Wavelet Transform",fontsize=16)
                     
-                ax.set_xlabel("Time/spatial domain" if xlabel is None else xlabel )
+                ax.set_xlabel("Time/spatial domain" if xlabel is None else xlabel ,fontsize=12)
                 if max(time)/FS>1:
                     ax.set_xticklabels(map(str, np.linspace(0,max(time)/FS,6, dtype=np.int)))
                 else:
                     ax.set_xticklabels(map(str, np.linspace(0,SNIP_LEN,6, dtype=np.int)))
-                    ax.set_xlabel('Time (ms)')
+                    ax.set_xlabel('Time (ms)',fontsize=12)
                     
                 ax.set_yticklabels(map(str, np.linspace(0,8000,10, dtype=np.int)))
 
@@ -626,6 +626,9 @@ class AEspeech:
             to, bot=self.AE.forward(mat)
 
             to=self.destandard(to)
+            
+            if self.rep=='wvlt':
+                mat,to=self.standard(torch.cat((mat, to)))[:mat.shape[0],:,:,:],self.standard(torch.cat((mat, to)))[mat.shape[0]:,:,:,:]
 
             mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
             error=torch.mean(mat_error,2).detach().cpu().numpy()

@@ -93,7 +93,7 @@ class testData(data.Dataset):
 if __name__=="__main__":
 
     if len(sys.argv)!=3:
-        print("python pdnnLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
+        print("python pdnnLateFusion.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/<UTTER>/'
     

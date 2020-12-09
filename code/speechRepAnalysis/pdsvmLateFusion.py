@@ -105,8 +105,11 @@ if __name__=="__main__":
     
     mfda_path=PATH+"/pdSpanish/"
     mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    pd_mfdas=mfdas[0:50]
-    hc_mfdas=mfdas[50:]
+    up_lims=np.histogram(mfdas,bins=3)[1][1:]
+    mfda_simp=mfdas
+    mfda_simp[np.where(mfda_simp<up_lims[0])]=0
+    mfda_simp[np.where(mfda_simp>up_lims[1])]=2
+    mfda_simp[np.where(mfda_simp>2)]=1
 
     for nrep,rep in enumerate(reps):
         if rep=='wvlt':
@@ -242,8 +245,8 @@ if __name__=="__main__":
                 yTest=np.concatenate((pdYTest,hcYTest),axis=0)
                 
                 #repeat m-fda score of a given speaker for every segment/utterance associated with said speaker.
-                mfda_yTrain=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdTrainIds+hcTrainIds]))
-                mfda_yTest=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdIds+hcIds]))
+                mfda_yTrain=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfda_simp[pdTrainIds+hcTrainIds]))
+                mfda_yTest=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfda_simp[pdIds+hcIds]))
                 param_grid = [
                   {'C':np.logspace(0,5,25), 'gamma':np.logspace(-8,-4,25), 'degree':[1],'kernel': ['rbf']},
                     ]
@@ -289,7 +292,9 @@ if __name__=="__main__":
             tst_pred_tpls=tuple((x1,x2) for x1,x2 in zip(tst_preds[0,:],tst_preds[1,:]))
             #predict speaker mfdas for each utterance (will average over after predictions of all spks made).
             for idItr,curr_id in enumerate(pdIds+hcIds):
-                results['Data']['mFDA_spear_corr'][o_itr][curr_id]=mfda_clf.predict(np.array(tst_pred_tpls[idItr]).reshape(1,-1))
+                for uIdx,utter in enumerate(UTTERS):
+                    pdb.set_trace()
+                    results['Data']['mFDA_spear_corr'][o_itr][curr_id][utter]=mfda_clf.predict(np.array(tst_pred_tpls[idItr*num_utters+uIdx]).reshape(1,-1))
 
             class_report=classification_report(yTest,grid.predict(xTest))
             results['Data']['train_acc']+=tr_acc*(1/(int(num_spks/num_pdHc_tests)*total_itrs))
@@ -299,7 +304,6 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][pdId]=bin_class[cpi*num_utters:(cpi+1)*num_utters]     
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
         
-#         results['Data']['mFDA_spear_corr']+=stats.spearmanr(predictions['predictions'].values,mfdas)[0]/total_itrs     
     
     if 'wvlt' in reps:
         results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")

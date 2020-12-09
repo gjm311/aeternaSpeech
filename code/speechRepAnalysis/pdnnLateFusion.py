@@ -93,7 +93,7 @@ class testData(data.Dataset):
 if __name__=="__main__":
 
     if len(sys.argv)!=3:
-        print("python pdnnLateFusion.py <'CAE','RAE', or 'ALL'> <'broadband' or 'narrowband' or 'wvlt'> <pd path>")
+        print("python pdnnLateFusion.py <'CAE','RAE', or 'ALL'> <nreps - 2 (nb/bb) or 3 (nb/bb/wvlt)> <pd path>")
         sys.exit()        
     #TRAIN_PATH: './pdSpanish/speech/<UTTER>/'
     
@@ -127,7 +127,7 @@ if __name__=="__main__":
         os.makedirs(save_path)
     
     ntr=100-(num_pdHc_tests+nv)
-    testResults=pd.DataFrame({splItr:{'test_acc':0, 'tstSpk_data':{}} for splItr in range(100//num_pdHc_tests)})     
+    testResults=pd.DataFrame({splItr:{'test_acc':0, 'tstSpk_data':{}, 'mfda_data':{}} for splItr in range(100//num_pdHc_tests)})     
     train_res=[]
         
     #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
@@ -135,7 +135,15 @@ if __name__=="__main__":
 #     lr_score_opt=0
 #     lr_scores=pd.DataFrame(columns=LRs,index=np.arange(1))
 #     for lrItr,LR in enumerate(LRs):
-
+    
+    mfda_path=PATH+"/pdSpanish/"
+    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
+    up_lims=np.histogram(mfdas,bins=3)[1][1:]
+    mfda_simp=mfdas
+    mfda_simp[np.where(mfda_simp<up_lims[0])]=0
+    mfda_simp[np.where(mfda_simp>up_lims[1])]=2
+    mfda_simp[np.where(mfda_simp>2)]=1
+    
     #aggregate all utterance data per speaker together.
     pdIds=np.arange(50)
     hcIds=np.arange(50,100)
@@ -308,14 +316,17 @@ if __name__=="__main__":
             trainResults_epo.iloc[epoch]['bb_train_loss']=train_losses[0]/ntr
             trainResults_epo.iloc[epoch]['nb_train_loss']=train_losses[1]/ntr
             
-            if np.mod(epoch+1),125)==0 or epoch==0:
+            if np.mod(epoch+1,1)==0 or epoch==0:
                 #Iterate through thresholds and choose one that yields best validation acc.
                 #Iterate through all num_tr training patients and classify based off difference in probability of PD/HC
                 tags={spk:[] for spk in rand_range if spk not in np.concatenate((pdIds,hcIds,valIds))}
                 frame_res=[]
+                tr_mfdas=[]
                 for rritr,trainItr in enumerate(rand_range):   
                     if trainItr in np.concatenate((pdIds,hcIds,valIds)):
                         continue
+                        
+                    train_mfda=mfda_simp[trainItr]
 
                     if trainItr<num_pd:
                         trainIndc=1
@@ -364,7 +375,7 @@ if __name__=="__main__":
                         frame_res=tuple((x1,x2) for x1,x2 in zip(bb_y_pred_tag,nb_y_pred_tag))
                         indcs_vec=np.ones(len(bb_y_pred_tag))*trainIndc
                     tags[trainItr]=tuple((x1,x2) for x1,x2 in zip(bb_y_pred_tag,nb_y_pred_tag))
-
+                    tr_mfdas.extend(np.ones(len(bb_y_pred_tag))*mfda_simp[trainItr])
 
                 clf = SGDClassifier(loss="hinge", penalty="l2")
                 clf.fit(frame_res, indcs_vec)
@@ -390,6 +401,11 @@ if __name__=="__main__":
                 clf2 = SGDClassifier(loss="hinge", penalty="l2")
                 clf2.fit(preds, pred_truths)
                 tr_acc=clf2.score(preds, pred_truths)
+                
+                if epoch==N_EPOCHS-1:
+                    clf2_mfda = SGDClassifier(loss="hinge", penalty="l2")
+                    clf2_mfda.fit(preds, tr_mfdas)
+                
                 
                 #Validate at end of each mod epochs for nv speakers
                 tags={spk:[] for spk in valIds}
@@ -473,6 +489,7 @@ if __name__=="__main__":
         test_loss=0.0
         tags={spk:[] for spk in pdIds+hcIds}
         frame_res=[]
+        tst_mfdas=[]
         for spkItr,spk in enumerate(['pd','hc']):
             for rritr,tstId in enumerate(testDict[list(testDict.keys())[0]][spk].keys()):
                 if tstId<num_pd:
@@ -520,7 +537,7 @@ if __name__=="__main__":
         pred_truths=[]
         for scount,key in enumerate(tags.keys()):
             testResults[itr]['tstSpk_data'][key]=np.fliplr(modCal.predict_proba(tags[key]))
-            
+            testResults[itr]['mfda_data'][key]=clf2_mfda.predict(tags[key])
             if scount==0:
                 preds=modCal.predict_proba(tags[key])
                 if key<num_pd:
@@ -535,6 +552,7 @@ if __name__=="__main__":
                     pred_truths=np.concatenate((pred_truths,np.zeros(len(tags[key]))))
 
         test_acc=clf2.score(preds,pred_truths)
+        
         #Store and report loss and accuracy for batch of test speakers.            
         testResults[itr]['test_acc']=test_acc
         print('\nTest Acc: {:.3f} '.format(

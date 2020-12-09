@@ -303,7 +303,6 @@ class AEspeech:
         if plosives_only==1:
             frames=get_frames(signal, audio_name=wav_file.split('/')[-1].replace(".wav", ""), snip_len=SNIP_LEN, phon_book_path=PATH_FRAMES,pkl_path=PATH_PHON_PROBS)
             NFR=frames.shape[0]
-            print(NFR)
         if plosives_only==0 or NFR==0:
             NFR=int(signal.shape[0]*1000/(FS*SNIP_LEN))
             init=0
@@ -334,7 +333,7 @@ class AEspeech:
         else:
             return wv_mat
     
-    def show_spectrograms(self, sig_len, spectrograms1, spectrograms2=None):
+    def show_spectrograms(self, sig_len, spectrograms1, spectrograms2=None, title=""):
         """
         Visualization of the computed tensor of Mel-scale spectrograms to be used as input for the autoencoders from a wav file
         :param spectrograms: tensor of spectrograms obtained from '''compute_spectrograms(wav-file)'''
@@ -353,11 +352,9 @@ class AEspeech:
         FRAME_SIZE=(FS*FRAME_SIZE)/sig_len
         
         if self.rep=='broadband':
-            title="Broadband Speech Representation"
             HOP=config['mel_spec']['BB_HOP']
             NFFT=config['mel_spec']['BB_TIME_WINDOW']
         if self.rep=='narrowband':
-            title="Narrowband Speech Representation"
             HOP=config['mel_spec']['NB_HOP']
             NFFT=config['mel_spec']['NB_TIME_WINDOW']
 
@@ -373,8 +370,10 @@ class AEspeech:
                 ax1.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
                 ax1.set_ylabel("Frequency (Hz)")
                 ax1.set_xlabel("Time (ms)")
-                ax1.set_title(self.rep+" mel-spectrogram")
-
+                if title=="":
+                    ax1.set_title(self.rep+" mel-spectrogram")
+                else:
+                    ax1.set_title(title)
                 to_curr=spectrograms2.data.numpy()[k,0,:,:]
                 ax2.imshow(np.flipud(to_curr), cmap=plt.cm.viridis, vmax=to_curr.max())
                 ax2.set_yticks(np.linspace(0,INTERP_NMELS,11))
@@ -383,7 +382,10 @@ class AEspeech:
                 ax2.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
                 ax2.set_ylabel("Frequency (Hz)")
                 ax2.set_xlabel("Time (ms)")
-                ax2.set_title("reconstructed "+self.rep+" mel-spectrogram")
+                if title=="":
+                    ax2.set_title("reconstructed "+self.rep+" mel-spectrogram")
+                else:
+                    ax2.set_title("reconstructed "+title)
                 plt.tight_layout()
                 plt.show()
 
@@ -575,11 +577,8 @@ class AEspeech:
                 mat=mat.cuda()
             to, bot=self.AE.forward(mat)
         
-        if return_numpy:
-            if torch.cuda.is_available():
-                return bot.data.cuda().numpy()
-            else:
-                return bot.data.cpu().numpy()
+        if return_numpy:            
+            return bot.data.cpu().numpy()
         else:
             return bot
 
@@ -607,13 +606,12 @@ class AEspeech:
             nb_out=self.destandard(nb_out)
             
             bb_error=(bb_mat[:,0,:,:]-bb_out[:,0,:,:])**2
-            bb_error=torch.mean(bb_error,2).detach().numpy()
+            bb_error=torch.mean(bb_error,2).detach().cpu().numpy()
             bb_error=(bb_error-np.mean(bb_error))/np.std(bb_error)
             nb_error=(nb_mat[:,0,:,:]-nb_out[:,0,:,:])**2
-            nb_error=torch.mean(nb_error,2).detach().numpy()
+            nb_error=torch.mean(nb_error,2).detach().cpu().numpy()
             nb_error=(nb_error-np.mean(nb_error))/np.std(nb_error)
             error=np.concatenate((bb_error,nb_error),axis=1)
-            
             
         else:
             if self.rep=='narrowband' or self.rep=='broadband':
@@ -630,7 +628,7 @@ class AEspeech:
             to=self.destandard(to)
 
             mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
-            error=torch.mean(mat_error,2).detach().numpy()
+            error=torch.mean(mat_error,2).detach().cpu().numpy()
             error=(error-np.mean(error))/np.std(error)
                
         if return_numpy:
@@ -647,17 +645,43 @@ class AEspeech:
         :param return_numpy: return the features in a numpy array (True) or a Pytorch tensor (False)
         :returns: Pytorch tensor (N, C, F, T). N: batch of spectrograms extracted every 500ms, C: number of channels (1),  F: number of Mel frequencies (128), T: time steps (126)
         """
-        mat=self.compute_spectrograms(wav_file)
-        mat=self.standard(mat)
-        if torch.cuda.is_available():
-            mat=mat.cuda()
-        to, bot=self.AE.forward(mat)        
-        to=self.destandard(to)
-
+        if self.rep=='mc_fuse':
+            self.rep='broadband'
+            bb_mat=self.compute_spectrograms(wav_file)
+            bb_mat=self.standard(bb_mat)
+            self.rep='narrowband'
+            nb_mat=self.compute_spectrograms(wav_file)
+            nb_mat=self.standard(nb_mat)
+            self.rep='mc_fuse'
+            if torch.cuda.is_available():
+                bb_mat=bb_mat.cuda()
+                nb_mat=nb_mat.cuda()
+            
+            bb_to,nb_to=self.AE.forward(bb_mat,nb_mat)
+            bb_to=self.destandard(bb_to)
+            nb_to=self.destandard(nb_to)
+            
+            mat=[bb_mat,nb_mat]
+            to=[bb_to,nb_to]
+        
+        elif self.rep in ['brodband','narrowband']:
+            mat=self.compute_spectrograms(wav_file)
+            if torch.cuda.is_available():
+                mat=mat.cuda()
+            to, bot=self.AE.forward(mat)        
+            to=self.destandard(to)
+        else:
+            mat,freqs=self.compute_cwt(wav_file,volta=1)
+            if torch.cuda.is_available():
+                mat=mat.cuda()
+            to, bot=self.AE.forward(mat)        
+            to=self.destandard(to)
+            mat=[mat,freqs]
+            
         if return_numpy:
             return to.data.cuda().numpy()
         else:
-            return to
+            return mat,to
 
         
     def compute_dynamic_features(self, wav_directory):

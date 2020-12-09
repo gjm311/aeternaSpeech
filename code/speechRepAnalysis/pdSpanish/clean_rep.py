@@ -12,15 +12,18 @@ def clean_frames(rep):
         if dirn in UTTERS:
             frame_path=data_path+'/'+dirn+'/frames/'
             if rep=='all':
-                shutil.rmtree(frame_path)
-            else:
-                shutil.rmtree(frame_path+'/'+rep+'/')
+                if os.path.isdir(frame_path):
+                    shutil.rmtree(frame_path)
+            else: 
+                if os.path.isdir(frame_path+'/'+rep+'/'):
+                    shutil.rmtree(frame_path+'/'+rep+'/')
 
             
 def clean_feats(rep):
     data_path=PATH+'/feats/'
     if rep=='all':
-        shutil.rmtree(data_path)
+        if os.path.isdir(data_path):
+            shutil.rmtree(data_path)
     else:
         dirNames=os.listdir(data_path)
         for dirn in dirNames:

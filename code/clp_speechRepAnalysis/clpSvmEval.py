@@ -397,11 +397,11 @@ if __name__=="__main__":
                 
                 
     if rep_typ=='mc_fuse':
-        results.to_pickle(save_path+model+"_mcFusionResults.pkl")
-    if rep_typ in ['broadband','narrowband','wvlt']:
-        results.to_pickle(save_path+model+'_'+rep_typ+"_aggResults.pkl")
+        results.to_pickle(save_path+mod+"_mcFusionResults.pkl")
+    if rep_typ in ['broadband','narrowband',F'wvlt']:
+        results.to_pickle(save_path+mod+'_'+rep_typ+"_aggResults.pkl")
     if rep_typ=='early_fuse':
         if 'wvlt' in reps:
-            results.to_pickle(save_path+model+"_wvlt_earlyFusionResults.pkl")
+            results.to_pickle(save_path+mod+"_wvlt_earlyFusionResults.pkl")
         else:
-            results.to_pickle(save_path+model+"_earlyFusionResults.pkl")
+            results.to_pickle(save_path+mod+"_earlyFusionResults.pkl")

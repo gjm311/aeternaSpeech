@@ -203,8 +203,11 @@ if __name__=="__main__":
     
     mfda_path=PATH+"/pdSpanish/"
     mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    pd_mfdas=mfdas[0:50]
-    hc_mfdas=mfdas[50:]
+    up_lims=np.histogram(mfdas,bins=3)[1][1:]
+    mfda_simp=mfdas
+    mfda_simp[np.where(mfda_simp<up_lims[0])]=0
+    mfda_simp[np.where(mfda_simp>up_lims[1])]=2
+    mfda_simp[np.where(mfda_simp>2)]=1
     
     #split data into training and test with multiple iterations
     num_pdHc_tests=config['svm']['tst_spks']#must be even (same # of test pds and hcs per iter)
@@ -261,8 +264,8 @@ if __name__=="__main__":
             hcYTest=np.zeros((pdTest.shape[0])).T
             yTest=np.concatenate((pdYTest,hcYTest),axis=0)
 
-            mfda_yTrain=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdTrainIds+hcTrainIds]))
-            mfda_yTest=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfdas[pdIds+hcIds]))
+            mfda_yTrain=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfda_simp[pdTrainIds+hcTrainIds]))
+            mfda_yTest=list(itertools.chain.from_iterable(itertools.repeat(x, num_utters) for x in mfda_simp[pdIds+hcIds]))
             
             param_grid = [
               {'C':np.logspace(0,5,25), 'gamma':np.logspace(-8,-4,25), 'degree':[1],'kernel': ['rbf']},
@@ -314,14 +317,14 @@ if __name__=="__main__":
                 
                 
     if rep_typ=='mc_fuse':
-        results.to_pickle(save_path+model+"_mcFusionResults.pkl")
+        results.to_pickle(save_path+mod+"_mcFusionResults.pkl")
     if rep_typ in ['broadband','narrowband','wvlt']:
-        results.to_pickle(save_path+model+'_'+rep+"_aggResults.pkl")
+        results.to_pickle(save_path+mod+'_'+rep+"_aggResults.pkl")
     if rep_typ=='early_fuse':
         if 'wvlt' in reps:
-            results.to_pickle(save_path+model+"_wvlt_earlyFusionResults.pkl")
+            results.to_pickle(save_path+mod+"_wvlt_earlyFusionResults.pkl")
         else:
-            results.to_pickle(save_path+model+"_earlyFusionResults.pkl")
+            results.to_pickle(save_path+mod+"_earlyFusionResults.pkl")
                 
 
 

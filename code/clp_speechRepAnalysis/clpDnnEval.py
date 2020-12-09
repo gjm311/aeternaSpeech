@@ -514,19 +514,19 @@ if __name__=="__main__":
                 #accuracy determined on majority rule (wlog, if more frames yield probability differences greater than 0,
                 #and if speaker is CLP than classification assessment is correct (1=>CLP,0=>HC).
                 test_loss+=test_loss_curr/len(test_loader.dataset)
-                if num_val==0:
+                if num_test==0:
                     indcs_vec=np.ones(len(y_pred_tag_curr))*indc
-                    num_val=1
+                    num_test=1
                 else:
                     indcs_vec=np.concatenate((indcs_vec,np.ones(len(y_pred_tag_curr))*indc))
-                    num_val+=1
+                    num_test+=1
                 y_pred_tag.extend(y_pred_tag_curr)
                 #Store raw scores for each test speaker (probability of CLP and HC as output by dnn) for ROC.
                 tst_diffs=(y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy().reshape(-1,1)
                 testResults[itr]['tstSpk_data'][tstId]=calibrator.predict_proba(tst_diffs)
 
         y_pred_tag=np.array(y_pred_tag).reshape(-1,1)
-        test_acc=clf.score(y_test_pred,indcs_vec)
+        test_acc=clf.score(y_pred_tag,indcs_vec)
         #Store and report loss and accuracy for batch of test speakers.            
         testResults[itr]['test_loss'],testResults[itr]['test_acc']=test_loss/num_clpHc_tests,test_acc
         print('\nTest Loss: {:.3f} \tTest Acc: {:.3f} '.format(

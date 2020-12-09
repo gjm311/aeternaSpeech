@@ -209,12 +209,20 @@ if __name__=="__main__":
 
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
     
+    mfda_path=PATH+"/pdSpanish/"
+    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
+    up_lims=np.histogram(mfdas,bins=3)[1][1:]
+    mfda_simp=mfdas
+    mfda_simp[np.where(mfda_simp<up_lims[0])]=0
+    mfda_simp[np.where(mfda_simp>up_lims[1])]=2
+    mfda_simp[np.where(mfda_simp>2)]=1
+    
     save_path=PATH+"/pdSpanish/classResults/dnn/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
     ntr=100-(num_pdHc_tests+nv)
-    testResults=pd.DataFrame({splItr:{'test_loss':0, 'test_acc':0, 'tstSpk_data':{}} for splItr in range(100//num_pdHc_tests)})     
+    testResults=pd.DataFrame({splItr:{'test_loss':0,'test_acc':0,'tstSpk_data':{},'mfda_data':{}} for splItr in range(100//num_pdHc_tests)})     
     train_res=[]
         
     #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
@@ -247,7 +255,7 @@ if __name__=="__main__":
 
         pdIds=[spks.index(pdCurr) for pdCurr in pdCurrs]
         hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
-
+                
         testDict={spk:{num[i]:{'feats':[]} for num in zip(pdIds,hcIds)} for i,spk in enumerate(['pd','hc'])}
         for pdItr in pdIds:
             testDict['pd'][pdItr]=spkDict['pd'][pdItr]
@@ -333,16 +341,16 @@ if __name__=="__main__":
 
             #Record train loss at end of each epoch (divide by number of train patients - ntr).
             trainResults_epo.iloc[epoch]['train_loss']=train_loss/ntr
-    
             
-            if np.mod(epoch+1,125)==0 or epoch==0:
+            if np.mod(epoch+1,1)==0 or epoch==0:
                 #Iterate through all num_tr training patients and classify based off difference in probability of PD/HC
                 num_tr=0
                 y_pred_tag=[]
+                tr_mfdas=[]
                 for trainItr in rand_range:   
                     if trainItr in np.concatenate((pdIds,hcIds,valIds)):
                         continue
-
+                    
                     if trainItr<num_pd:
                         trainIndc=1
                         trainOpp=0
@@ -379,17 +387,24 @@ if __name__=="__main__":
                         indcs_vec=np.concatenate((indcs_vec,np.ones(len(y_pred_tag_curr))*trainIndc))
                         num_tr+=1
                     y_pred_tag.extend(y_pred_tag_curr)
-                
+                    tr_mfdas.extend(np.ones(len(y_pred_tag_curr))*mfda_simp[trainItr])
+                    
+                #fit SGD classifier on ALL training frames (for all spks/utters).
                 y_pred_tag=np.array(y_pred_tag).reshape(-1,1)
                 clf = SGDClassifier(loss="hinge", penalty="l2")
                 clf.fit(y_pred_tag, indcs_vec) 
+                #training acc. determined based on # of frames classified correctly
                 tr_acc=clf.score(y_pred_tag,indcs_vec)
+                
+                #CalibratedClassifier allows for binary prediction with SGD classifier. Used for test speakers
+                #and in analysis, making ultimate decision on classifying spk as pd/hc.
                 if epoch==N_EPOCHS-1:
                     calibrator=CalibratedClassifierCV(clf, cv='prefit')
                     modCal=calibrator.fit(y_pred_tag, indcs_vec)
-
+                    mfda_clf = SGDClassifier(loss="hinge", penalty="l2")
+                    mfda_clf.fit(y_pred_tag, tr_mfdas) 
             
-                #Validate at end of each 1 epochs for nv speakers
+                #Validate at end of each epoch for nv speakers
                 val_loss=0.0
                 num_val=0
                 y_pred_tag=[]
@@ -488,19 +503,21 @@ if __name__=="__main__":
                 #accuracy determined on majority rule (wlog, if more frames yield probability differences greater than 0,
                 #and if speaker is PD than classification assessment is correct (1=>PD,0=>HC).
                 test_loss+=test_loss_curr/len(test_loader.dataset)
-                if num_val==0:
+                if num_test==0:
                     indcs_vec=np.ones(len(y_pred_tag_curr))*indc
-                    num_val=1
+                    num_test=1
                 else:
                     indcs_vec=np.concatenate((indcs_vec,np.ones(len(y_pred_tag_curr))*indc))
-                    num_val+=1
+                    num_test+=1
                 y_pred_tag.extend(y_pred_tag_curr)
+                
                 #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.
-                tst_diffs=(y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy().reshape(-1,1)
-                testResults[itr]['tstSpk_data'][tstId]=calibrator.predict_proba(tst_diffs)
-
+#                 tst_diffs=(y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy().reshape(-1,1)
+                testResults[itr]['tstSpk_data'][tstId]=calibrator.predict_proba(np.array(y_pred_tag_curr).reshape(-1,1))
+                testResults[itr]['mfda_data'][tstId]=mfda_clf.predict(np.ones(len(y_pred_tag_curr))*mfda_simp[tstId])
+        
         y_pred_tag=np.array(y_pred_tag).reshape(-1,1)
-        test_acc=clf.score(y_test_pred,indcs_vec)
+        test_acc=clf.score(y_pred_tag,indcs_vec)
         #Store and report loss and accuracy for batch of test speakers.            
         testResults[itr]['test_loss'],testResults[itr]['test_acc']=test_loss/num_pdHc_tests,test_acc
         print('\nTest Loss: {:.3f} \tTest Acc: {:.3f} '.format(

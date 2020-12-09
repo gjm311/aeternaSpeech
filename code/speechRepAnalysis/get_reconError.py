@@ -51,6 +51,8 @@ if __name__ == "__main__":
     
     if rep=='wvlt':
         n_freqs=config['wavelet']['NBF']
+    elif rep=='mc_fuse':
+        n_freqs=config['mel_spec']['INTERP_NMELS']*2
     else:
         n_freqs=config['mel_spec']['INTERP_NMELS'] 
     
@@ -77,20 +79,7 @@ if __name__ == "__main__":
 
                 # for mod in models:
                 aespeech=AEspeech(model=mod,units=unit,rep=rep)
-                if rep=='broadband' or rep=='narrowband':                  
-                    mat=aespeech.compute_spectrograms(wav_file,plosives_only=0)
-                if rep=='wvlt':
-                    mat,freqs=aespeech.compute_cwt(wav_file,plosives_only=0)
-
-                if torch.cuda.is_available():
-                    mat=mat.cuda()
-                to,bot=aespeech.AE.forward(mat)
-                to=aespeech.destandard(to)
-                
-                mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
-                error=torch.mean(mat_error,2).cpu().detach().numpy()
-#                 error=torch.mean(mat_error,2).detach().numpy()
-                error=(error-error.mean())/error.std()
+                error=aespeech.compute_rec_error_features(wav_file)
                 data_curr_means[ii,:]=np.mean(error,axis=0)
                 data_curr_sds[ii,:]=np.std(error,axis=0)
                 

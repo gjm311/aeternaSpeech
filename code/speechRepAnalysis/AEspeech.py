@@ -357,11 +357,13 @@ class AEspeech:
         if self.rep=='narrowband':
             HOP=config['mel_spec']['NB_HOP']
             NFFT=config['mel_spec']['NB_TIME_WINDOW']
-
+        
         if torch.is_tensor(spectrograms2):
+            fig,ax=plt.subplots(nrows=spectrograms1.shape[0],ncols=2, figsize=(12,12))
             for k in range(spectrograms1.shape[0]):
-                fig,(ax1,ax2)=plt.subplots(ncols=2, figsize=(8,8))
-
+#                 pdb.set_trace()
+                ax1=ax[k][0]
+                ax2=ax[k][1]
                 mat_curr=spectrograms1.data.numpy()[k,0,:,:]
                 ax1.imshow(np.flipud(mat_curr), cmap=plt.cm.viridis, vmax=mat_curr.max())
                 ax1.set_yticks(np.linspace(0,INTERP_NMELS,11))
@@ -387,7 +389,7 @@ class AEspeech:
 #                 else:
 #                     ax2.set_title("reconstructed "+title,fontsize=16)
                 plt.tight_layout()
-                plt.show()
+            plt.show()
 
         else:
             spectrograms=spectrograms1
@@ -582,7 +584,7 @@ class AEspeech:
         else:
             return bot
 
-    def compute_rec_error_features(self, wav_file, return_numpy=True):
+    def compute_rec_error_features(self, wav_file,plosives_only=1, return_numpy=True):
         """
         Compute the  reconstruction error features from the autoencoder
         :param wav_file: *.wav file with a given sampling frequency
@@ -591,10 +593,10 @@ class AEspeech:
         """
         if self.rep=='mc_fuse':
             self.rep='broadband'
-            bb_mat=self.compute_spectrograms(wav_file)
+            bb_mat=self.compute_spectrograms(wav_file,plosives_only=plosives_only)
             bb_mat=self.standard(bb_mat)
             self.rep='narrowband'
-            nb_mat=self.compute_spectrograms(wav_file)
+            nb_mat=self.compute_spectrograms(wav_file,plosives_only=plosives_only)
             nb_mat=self.standard(nb_mat)
             self.rep='mc_fuse'
             
@@ -607,32 +609,29 @@ class AEspeech:
             
             bb_error=(bb_mat[:,0,:,:]-bb_out[:,0,:,:])**2
             bb_error=torch.mean(bb_error,2).detach().cpu().numpy()
-            bb_error=(bb_error-np.mean(bb_error))/np.std(bb_error)
+#             bb_error=(bb_error-np.mean(bb_error))/np.std(bb_error)
             nb_error=(nb_mat[:,0,:,:]-nb_out[:,0,:,:])**2
             nb_error=torch.mean(nb_error,2).detach().cpu().numpy()
-            nb_error=(nb_error-np.mean(nb_error))/np.std(nb_error)
+#             nb_error=(nb_error-np.mean(nb_error))/np.std(nb_error)
             error=np.concatenate((bb_error,nb_error),axis=1)
             
         else:
             if self.rep=='narrowband' or self.rep=='broadband':
-                mat=self.compute_spectrograms(wav_file)
+                mat=self.compute_spectrograms(wav_file,plosives_only=plosives_only)
                 mat=self.standard(mat)
             else:
-                mat=self.compute_cwt(wav_file,volta=0)
-
+                mat=self.compute_cwt(wav_file,volta=0,plosives_only=plosives_only)
 
             if torch.cuda.is_available():
                 mat=mat.cuda()
             to, bot=self.AE.forward(mat)
-
+            
             to=self.destandard(to)
             
-            if self.rep=='wvlt':
-                mat,to=self.standard(torch.cat((mat, to)))[:mat.shape[0],:,:,:],self.standard(torch.cat((mat, to)))[mat.shape[0]:,:,:,:]
-
+#             error=[np.correlate(mat_mean[i,:].detach().numpy(), to_mean[i,:].detach().numpy()) for i in range(mat.shape[2])]
             mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
-            error=torch.mean(mat_error,2).detach().cpu().numpy()
-            error=(error-np.mean(error))/np.std(error)
+            error=torch.mean(mat_error,2).detach().cpu().numpy()            
+#             error=(error-np.mean(error))/np.std(error)
                
         if return_numpy:
             return error
@@ -641,7 +640,7 @@ class AEspeech:
 
 
 
-    def compute_rec_spectrogram(self, wav_file, return_numpy=True):
+    def compute_rec_spectrogram(self, wav_file,plosives_only=1, return_numpy=True):
         """
         Compute the  reconstructed spectrogram from the autoencoder
         :param wav_file: *.wav file with a sampling frequency of 16kHz
@@ -667,14 +666,14 @@ class AEspeech:
             mat=[bb_mat,nb_mat]
             to=[bb_to,nb_to]
         
-        elif self.rep in ['brodband','narrowband']:
-            mat=self.compute_spectrograms(wav_file)
+        elif self.rep in ['broadband','narrowband']:
+            mat=self.compute_spectrograms(wav_file,plosives_only=plosives_only)
             if torch.cuda.is_available():
                 mat=mat.cuda()
             to, bot=self.AE.forward(mat)        
             to=self.destandard(to)
         else:
-            mat,freqs=self.compute_cwt(wav_file,volta=1)
+            mat,freqs=self.compute_cwt(wav_file,volta=1,plosives_only=plosives_only)
             if torch.cuda.is_available():
                 mat=mat.cuda()
             to, bot=self.AE.forward(mat)        

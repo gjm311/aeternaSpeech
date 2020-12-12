@@ -55,6 +55,8 @@ if __name__ == "__main__":
     
     data={spk:{'means':[], 'stds':[]} for spk in ['clp','hc']}
     utters= os.listdir(PATH+sys.argv[3])
+    utters=[utter for utter in utters if ".ipynb" not in utter and os.path.isdir(PATH+sys.argv[3]+'/'+utter+'/')]
+    utters=['gato']
     
     for itr,utter in enumerate(utters):
         path_utter=PATH+sys.argv[3]+'/'+utter+'/'

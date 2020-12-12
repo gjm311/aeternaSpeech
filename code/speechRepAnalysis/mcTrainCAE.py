@@ -159,7 +159,6 @@ if __name__=="__main__":
             optimizer.step()
             train_loss+=loss.item()*data_cat.size(0)
             
-            pdb.set_trace()
         ######################    
         # validate the model #
         ######################

@@ -57,7 +57,7 @@ if __name__ == "__main__":
         n_freqs=config['mel_spec']['INTERP_NMELS'] 
     
     data={spk:{'means':[], 'stds':[]} for spk in ['pd','hc']}
-    utters= os.listdir(PATH+sys.argv[3])
+#     utters= os.listdir(PATH+sys.argv[3])
     utters=['pataka']
     
     for itr,utter in enumerate(utters):
@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
                 # for mod in models:
                 aespeech=AEspeech(model=mod,units=unit,rep=rep)
-                error=aespeech.compute_rec_error_features(wav_file)
+                error=aespeech.compute_rec_error_features(wav_file,plosives_only=0)
                 data_curr_means[ii,:]=np.mean(error,axis=0)
                 data_curr_sds[ii,:]=np.std(error,axis=0)
                 
@@ -91,6 +91,6 @@ if __name__ == "__main__":
 ),axis=0)
                 data[spk]['stds']=np.concatenate((data[spk]['stds'],data_curr_sds
 ),axis=0)
-               
+                
     with open(save_path, 'wb') as handle:
         pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)

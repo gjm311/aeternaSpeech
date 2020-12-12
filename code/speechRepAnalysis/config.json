@@ -6,7 +6,7 @@
         },
     
     "wavelet": {
-        "SNIP_LEN":500,
+        "SNIP_LEN":50,
         "NBF":64,
         "TIME_STEPS":256,
         "OVRLP":0.5

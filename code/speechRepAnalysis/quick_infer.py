@@ -8,6 +8,8 @@ from scipy.io.wavfile import read
 import scipy
 import librosa
 from librosa.feature import melspectrogram
+import torchaudio as T
+import torchaudio.transforms as TT
 import numpy as np
 import numpy.fft
 import cv2
@@ -83,7 +85,7 @@ if __name__ == "__main__":
         WIN_LEN=int(FS*config['mel_spec']['BB_TIME_WINDOW'])#5ms time window (60 SAMPLES)
         min_filter=50
         max_filter=7000
-        rep='narrowband'
+        rep='broadband'
     elif nb==1:
         #narrowband: higher frequency resolution, less time resolution
         NMELS=config['mel_spec']['NB_NMELS']
@@ -91,7 +93,7 @@ if __name__ == "__main__":
         WIN_LEN=int(FS*config['mel_spec']['NB_TIME_WINDOW']) #30ms time window (480 SAMPLES)
         min_filter=300
         max_filter=5400
-        rep='broadband'
+        rep='narrowband'
         
     PATH=os.path.dirname(os.path.abspath(__file__)) 
     path_audio=PATH+sys.argv[3]
@@ -115,24 +117,42 @@ if __name__ == "__main__":
         wav_file=path_audio+os.listdir(path_audio)[itr]
                 
         if ori=='ori':
-            fs_in, signal=read(wav_file)
-            sig_len=len(signal)
-            if fs_in!=FS:
-                raise ValueError(str(fs)+" is not a valid sampling frequency")
+#             fs_in, signal=read(wav_file)
+#             sig_len=len(signal)
+#             if fs_in!=FS:
+#                 raise ValueError(str(fs)+" is not a valid sampling frequency")
 
-            signal=signal-np.mean(signal)
-            signal=signal/np.max(np.abs(signal))
-            signal=butter_bandpass_filter(signal,min_filter,max_filter,FS)
-            imag=melspectrogram(signal, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
-            imag=np.abs(imag)
-            imag=np.log(imag, dtype=np.float32)
-            spectrogram=torch.from_numpy(imag)
+#             signal=signal-np.mean(signal)
+#             signal=signal/np.max(np.abs(signal))
+#             signal=butter_bandpass_filter(signal,min_filter,max_filter,FS)
+#             imag=melspectrogram(signal, sr=FS, n_fft=NFFT, win_length=WIN_LEN, hop_length=HOP, n_mels=NMELS, fmax=FS//2)
+#             imag=np.abs(imag)
+#             imag=np.log(imag, dtype=np.float32)
+#             spectrogram=torch.from_numpy(imag)
+
+            audio, sr = T.load_wav(filename)
+            audio = torch.clamp(audio[0] / 32767.5, -1.0, 1.0)
+
+            mel_args = {
+              'sample_rate': sr,
+              'win_length': WIN_LEN,
+              'hop_length': HOP,
+              'n_fft': params.n_fft,
+              'f_min': 20.0,
+              'f_max': FS / 2.0,
+              'n_mels': NMELS,
+              'power': 1.0,
+              'normalized': True,
+          }
+            mel_spec_transform = TT.MelSpectrogram(**mel_args)
+
+            with torch.no_grad():
+                spectrogram = mel_spec_transform(audio)
+                spectrogram = 20 * torch.log10(torch.clamp(spectrogram, min=1e-5)) - 20
+                spectrogram = torch.clamp((spectrogram + 100) / 100, 0.0, 1.0)
         else:
-            aespeech=AEspeech(model='CAE',units=units,rep=rep)   
-#             if torch.cuda.is_available():
+            aespeech=AEspeech(model='CAE',units=units,rep=rep)  
             mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0)
-#             else:
-#                 mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0).float()
             if torch.cuda.is_available():
                 mat=mat.cuda()
             to,bot=aespeech.AE.forward(mat)
@@ -147,5 +167,4 @@ if __name__ == "__main__":
                 endi+=shift
         
         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, ori=ori, rep=rep)
-        torchaudio.save(save_path+ori+"_"+os.listdir(path_audio)[iter]+".pkl", audio.cpu(), sample_rate=FS)
-#         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, device=torch.device('cpu'))
+        torchaudio.save(save_path+ori+"_"+os.listdir(path_audio)[iter]+".wav", audio.cpu(),sample_rate=FS)

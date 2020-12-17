@@ -6,7 +6,7 @@ import pickle
 import random
 import pdb
 import itertools
-from AEspeech import AEspeech
+from clpAEspeech import AEspeech
 from scipy import stats
 from scipy.stats import kurtosis, skew
 from sklearn import svm, datasets
@@ -31,7 +31,7 @@ import argparse
 
 PATH=os.path.dirname(os.path.abspath(__file__))
 #LOAD CONFIG.JSON INFO
-with open("config.json") as f:
+with open("clpConfig.json") as f:
     data = f.read()
 config = json.loads(data)
 UNITS=config['general']['UNITS']

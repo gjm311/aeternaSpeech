@@ -12,9 +12,10 @@ import random
 import torch.utils.data as data
 from clpdnn import clpdnn
 import toolbox.traintestsplit as tts
-from AEspeech import AEspeech
+from clpAEspeech import AEspeech
 import json
 from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import classification_report
 import argparse
 import pdb
 from sklearn import metrics
@@ -233,7 +234,7 @@ if __name__=="__main__":
     num_spks=len(spks)
     num_clp=len(clpNames)
     num_hc=len(hcNames)
-    testResults=pd.DataFrame({splItr:{'test_loss':0, 'test_acc':0, 'tstSpk_data':{}} for splItr in range(num_iters)})     
+    testResults=pd.DataFrame({splItr:{'test_loss':0, 'test_acc':0, 'class_report':{}, 'tstSpk_data':{}} for splItr in range(num_iters)})     
     train_res=[]
     #split data into training and test with multiple iterations (evenly split CLP:HC)
     #Due to uneven CLP/HC populations (135:58), we sample 15 test patients of each class over 9 iterations.
@@ -361,7 +362,7 @@ if __name__=="__main__":
             trainResults_epo.iloc[epoch]['train_loss']=train_loss/(len(rand_range)-(num_clpHc_tests+nv))
     
             
-            if np.mod(epoch+1,125)==0 or epoch==0:
+            if np.mod(epoch+1,1)==0 or epoch==0:
                 #Iterate through all num_tr training patients and classify based off difference in probability of CLP/HC
                 num_tr=0
                 y_pred_tag=[]

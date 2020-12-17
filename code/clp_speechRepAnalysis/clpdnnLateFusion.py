@@ -13,9 +13,10 @@ import torch.utils.data as data
 from clpdnn import clpdnn
 from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import classification_report
 from sklearn.calibration import CalibratedClassifierCV
 import toolbox.traintestsplit as tts
-from AEspeech import AEspeech
+from clpAEspeech import AEspeech
 import json
 import argparse
 import pdb
@@ -23,7 +24,7 @@ from sklearn import metrics
 
 PATH=os.path.dirname(os.path.abspath(__file__))
 #LOAD CONFIG.JSON INFO
-with open("config.json") as f:
+with open("clpConfig.json") as f:
     info = f.read()
 config = json.loads(info)
 UNITS=config['general']['UNITS']
@@ -126,7 +127,7 @@ if __name__=="__main__":
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
-    testResults=pd.DataFrame({splItr:{'test_acc':0, 'tstSpk_data':{}} for splItr in range(num_iters)})     
+    testResults=pd.DataFrame({splItr:{'test_acc':0,'class_report':{}, 'tstSpk_data':{}, } for splItr in range(num_iters)})     
     train_res=[]
         
     #iterate through all clp and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
@@ -337,7 +338,7 @@ if __name__=="__main__":
             trainResults_epo.iloc[epoch]['bb_train_loss']=train_losses[0]/ntr
             trainResults_epo.iloc[epoch]['nb_train_loss']=train_losses[1]/ntr
             
-            if np.mod(epoch+1,125)==0 or epoch==0:
+            if np.mod(epoch+1,1)==0 or epoch==0:
                 #Iterate through thresholds and choose one that yields best validation acc.
                 #Iterate through all num_tr training patients and classify based off difference in probability of CLP/HC
                 tags={spk:[] for spk in rand_range if spk not in np.concatenate((clpIds,hcIds,valIds))}
@@ -566,6 +567,7 @@ if __name__=="__main__":
         test_acc=clf2.score(preds,pred_truths)
         #Store and report loss and accuracy for batch of test speakers.            
         testResults[itr]['test_acc']=test_acc
+        testResults[itr]['class_report']=classification_report(pred_truths,calibrator.predict(preds))
         print('\nTest Acc: {:.3f} '.format(
                     test_acc
             ))

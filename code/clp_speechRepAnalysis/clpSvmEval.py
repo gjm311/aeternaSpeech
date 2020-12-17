@@ -6,7 +6,7 @@ import pickle
 import random
 import pdb
 import itertools
-from AEspeech import AEspeech
+from clpAEspeech import AEspeech
 from scipy import stats
 from scipy.stats import kurtosis, skew
 from sklearn import svm, datasets
@@ -31,7 +31,7 @@ import argparse
 
 PATH=os.path.dirname(os.path.abspath(__file__))
 #LOAD CONFIG.JSON INFO
-with open("config.json") as f:
+with open("clpConfig.json") as f:
     data = f.read()
 config = json.loads(data)
 UNITS=config['general']['UNITS']
@@ -398,7 +398,7 @@ if __name__=="__main__":
                 
     if rep_typ=='mc_fuse':
         results.to_pickle(save_path+mod+"_mcFusionResults.pkl")
-    if rep_typ in ['broadband','narrowband',F'wvlt']:
+    if rep_typ in ['broadband','narrowband','wvlt']:
         results.to_pickle(save_path+mod+'_'+rep_typ+"_aggResults.pkl")
     if rep_typ=='early_fuse':
         if 'wvlt' in reps:

@@ -14,6 +14,7 @@ from pdnn import pdn
 from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import classification_report
 import toolbox.traintestsplit as tts
 from AEspeech import AEspeech
 import json
@@ -127,7 +128,7 @@ if __name__=="__main__":
         os.makedirs(save_path)
     
     ntr=100-(num_pdHc_tests+nv)
-    testResults=pd.DataFrame({splItr:{'test_acc':0, 'tstSpk_data':{}, 'mfda_data':{}} for splItr in range(100//num_pdHc_tests)})     
+    testResults=pd.DataFrame({splItr:{'test_acc':0, 'tstSpk_data':{}, 'class_report':{}, 'mfda_data':{}} for splItr in range(100//num_pdHc_tests)})
     train_res=[]
         
     #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
@@ -137,12 +138,7 @@ if __name__=="__main__":
 #     for lrItr,LR in enumerate(LRs):
     
     mfda_path=PATH+"/pdSpanish/"
-    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    up_lims=np.histogram(mfdas,bins=3)[1][1:]
-    mfda_simp=mfdas
-    mfda_simp[np.where(mfda_simp<up_lims[0])]=0
-    mfda_simp[np.where(mfda_simp>up_lims[1])]=2
-    mfda_simp[np.where(mfda_simp>2)]=1
+    mfda_simp=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
     
     #aggregate all utterance data per speaker together.
     pdIds=np.arange(50)
@@ -536,7 +532,7 @@ if __name__=="__main__":
         preds=[]
         pred_truths=[]
         for scount,key in enumerate(tags.keys()):
-            testResults[itr]['tstSpk_data'][key]=np.fliplr(modCal.predict_proba(tags[key]))
+            testResults[itr]['tstSpk_data'][key]=modCal.predict_proba(tags[key])
             testResults[itr]['mfda_data'][key]=clf2_mfda.predict(tags[key])
             if scount==0:
                 preds=modCal.predict_proba(tags[key])
@@ -555,6 +551,7 @@ if __name__=="__main__":
         
         #Store and report loss and accuracy for batch of test speakers.            
         testResults[itr]['test_acc']=test_acc
+        testResults[itr]['class_report']=classification_report(pred_truths,calibrator.predict(preds))
         print('\nTest Acc: {:.3f} '.format(
                     test_acc
             ))

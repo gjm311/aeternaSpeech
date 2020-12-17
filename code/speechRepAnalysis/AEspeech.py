@@ -219,7 +219,7 @@ class AEspeech:
         if not os.path.exists(PATH_PHON_PROBS):
             os.makedirs(PATH_PHON_PROBS)
         
-        FRAME_SIZE=(FS*FRAME_SIZE) #as percent of signal length
+        FRAME_SIZE=(FS*FRAME_SIZE) #0.5 implies 500 mS (converted to samples)
         TIME_SHIFT=FRAME_SIZE/2 #half of the framesize
         SNIP_LEN=config['mel_spec']['SNIP_LEN']
         NFFT=config['mel_spec']['NFFT']
@@ -359,37 +359,22 @@ class AEspeech:
             NFFT=config['mel_spec']['NB_TIME_WINDOW']
         
         if torch.is_tensor(spectrograms2):
-            fig,ax=plt.subplots(nrows=spectrograms1.shape[0],ncols=2, figsize=(12,12))
+#             fig,axs=plt.subplots(nrows=spectrograms1.shape[0],ncols=2, figsize=(12,12))
             for k in range(spectrograms1.shape[0]):
-#                 pdb.set_trace()
-                ax1=ax[k][0]
-                ax2=ax[k][1]
-                mat_curr=spectrograms1.data.numpy()[k,0,:,:]
-                ax1.imshow(np.flipud(mat_curr), cmap=plt.cm.viridis, vmax=mat_curr.max())
-                ax1.set_yticks(np.linspace(0,INTERP_NMELS,11))
-                ax1.set_yticklabels(map(str, f))
-                ax1.set_xticks(np.linspace(0,spectrograms1.shape[3],6))
-                ax1.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
-                ax1.set_ylabel("Frequency (Hz)",fontsize=12)
-                ax1.set_xlabel("Time (ms)",fontsize=12)
-#                 if title=="":
-#                     ax1.set_title(self.rep+" mel-spectrogram",fontsize=16)
-#                 else:
-#                     ax1.set_title(title,fontsize=16)
-                to_curr=spectrograms2.data.numpy()[k,0,:,:]
-                ax2.imshow(np.flipud(to_curr), cmap=plt.cm.viridis, vmax=to_curr.max())
-                ax2.set_yticks(np.linspace(0,INTERP_NMELS,11))
-                ax2.set_yticklabels(map(str, f))
-                ax2.set_xticks(np.linspace(0,spectrograms2.shape[3],6))
-                ax2.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
-                ax2.set_ylabel("Frequency (Hz)",fontsize=12)
-                ax2.set_xlabel("Time (ms)",fontsize=12)
-#                 if title=="":
-#                     ax2.set_title("reconstructed "+self.rep+" mel-spectrogram",fontsize=16)
-#                 else:
-#                     ax2.set_title("reconstructed "+title,fontsize=16)
+                specs=[spectrograms1[k,0,:,:],spectrograms2[k,0,:,:]]
+                fig,(ax1,ax2)=plt.subplots(ncols=2, figsize=(11,5))
+                axs=[ax1,ax2]
+                for ii,(mat_curr,ax) in enumerate(zip(specs,axs)):
+                    mat_curr=mat_curr.data.numpy()
+                    ax.imshow(np.flipud(mat_curr), cmap=plt.cm.viridis, vmax=mat_curr.max())
+                    ax.set_yticks(np.linspace(0,INTERP_NMELS,11))
+                    ax.set_yticklabels(map(str, f))
+                    ax.set_xticks(np.linspace(0,spectrograms1.shape[3],6))
+                    ax.set_xticklabels(map(str, np.linspace(0,(sig_len*FRAME_SIZE*1000)/FS,6, dtype=np.int)))
+                    ax.set_ylabel("Frequency (Hz)",fontsize=12)
+                    ax.set_xlabel("Time (ms)",fontsize=12)
+
                 plt.tight_layout()
-            plt.show()
 
         else:
             spectrograms=spectrograms1
@@ -609,10 +594,10 @@ class AEspeech:
             
             bb_error=(bb_mat[:,0,:,:]-bb_out[:,0,:,:])**2
             bb_error=torch.mean(bb_error,2).detach().cpu().numpy()
-#             bb_error=(bb_error-np.mean(bb_error))/np.std(bb_error)
+            bb_error=(bb_error-np.mean(bb_error))/np.std(bb_error)
             nb_error=(nb_mat[:,0,:,:]-nb_out[:,0,:,:])**2
             nb_error=torch.mean(nb_error,2).detach().cpu().numpy()
-#             nb_error=(nb_error-np.mean(nb_error))/np.std(nb_error)
+            nb_error=(nb_error-np.mean(nb_error))/np.std(nb_error)
             error=np.concatenate((bb_error,nb_error),axis=1)
             
         else:
@@ -631,7 +616,7 @@ class AEspeech:
 #             error=[np.correlate(mat_mean[i,:].detach().numpy(), to_mean[i,:].detach().numpy()) for i in range(mat.shape[2])]
             mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
             error=torch.mean(mat_error,2).detach().cpu().numpy()            
-#             error=(error-np.mean(error))/np.std(error)
+            error=(error-np.mean(error))/np.std(error)
                
         if return_numpy:
             return error

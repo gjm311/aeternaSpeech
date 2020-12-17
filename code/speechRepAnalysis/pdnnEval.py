@@ -15,6 +15,7 @@ from pdnn import pdn
 import toolbox.traintestsplit as tts
 from AEspeech import AEspeech
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import classification_report
 import json
 import argparse
 import pdb
@@ -210,19 +211,14 @@ if __name__=="__main__":
 #     LRs=[10**-ex for ex in np.linspace(4,7,6)]
     
     mfda_path=PATH+"/pdSpanish/"
-    mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    up_lims=np.histogram(mfdas,bins=3)[1][1:]
-    mfda_simp=mfdas
-    mfda_simp[np.where(mfda_simp<up_lims[0])]=0
-    mfda_simp[np.where(mfda_simp>up_lims[1])]=2
-    mfda_simp[np.where(mfda_simp>2)]=1
+    mfda_simp=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
     
     save_path=PATH+"/pdSpanish/classResults/dnn/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
     ntr=100-(num_pdHc_tests+nv)
-    testResults=pd.DataFrame({splItr:{'test_loss':0,'test_acc':0,'tstSpk_data':{},'mfda_data':{}} for splItr in range(100//num_pdHc_tests)})     
+    testResults=pd.DataFrame({splItr:{'test_loss':0,'test_acc':0,'tstSpk_data':{},'class_report':{}, 'mfda_data':{}} for splItr in range(100//num_pdHc_tests)})     
     train_res=[]
         
     #iterate through all pd and hc speakers for a given utterance (see UTTERS for options) and using leave ten out, train a DNN
@@ -514,12 +510,14 @@ if __name__=="__main__":
                 #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.
 #                 tst_diffs=(y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy().reshape(-1,1)
                 testResults[itr]['tstSpk_data'][tstId]=calibrator.predict_proba(np.array(y_pred_tag_curr).reshape(-1,1))
-                testResults[itr]['mfda_data'][tstId]=mfda_clf.predict(np.ones(len(y_pred_tag_curr))*mfda_simp[tstId])
+                testResults[itr]['mfda_data'][tstId]=mfda_clf.predict(np.array(y_pred_tag_curr).reshape(-1,1))
+        
         
         y_pred_tag=np.array(y_pred_tag).reshape(-1,1)
         test_acc=clf.score(y_pred_tag,indcs_vec)
         #Store and report loss and accuracy for batch of test speakers.            
         testResults[itr]['test_loss'],testResults[itr]['test_acc']=test_loss/num_pdHc_tests,test_acc
+        testResults[itr]['class_report']=classification_report(indcs_vec,calibrator.predict(y_pred_tag))
         print('\nTest Loss: {:.3f} \tTest Acc: {:.3f} '.format(
                     test_loss/num_pdHc_tests,
                     test_acc

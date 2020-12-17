@@ -316,15 +316,15 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
                 
                 
-    if rep_typ=='mc_fuse':
-        results.to_pickle(save_path+mod+"_mcFusionResults.pkl")
-    if rep_typ in ['broadband','narrowband','wvlt']:
-        results.to_pickle(save_path+mod+'_'+rep+"_aggResults.pkl")
-    if rep_typ=='early_fuse':
-        if 'wvlt' in reps:
-            results.to_pickle(save_path+mod+"_wvlt_earlyFusionResults.pkl")
-        else:
-            results.to_pickle(save_path+mod+"_earlyFusionResults.pkl")
+        if rep_typ=='mc_fuse':
+            results.to_pickle(save_path+mod+"_mcFusionResults.pkl")
+        if rep_typ in ['broadband','narrowband','wvlt']:
+            results.to_pickle(save_path+mod+'_'+rep+"_aggResults.pkl")
+        if rep_typ=='early_fuse':
+            if 'wvlt' in reps:
+                results.to_pickle(save_path+mod+"_wvlt_earlyFusionResults.pkl")
+            else:
+                results.to_pickle(save_path+mod+"_earlyFusionResults.pkl")
                 
 
 

@@ -95,6 +95,7 @@ if __name__ == "__main__":
         max_filter=5400
         rep='narrowband'
         
+    INTERP_NMELS=config['mel_spec']['INTERP_NMELS']
     PATH=os.path.dirname(os.path.abspath(__file__)) 
     path_audio=PATH+sys.argv[3]
     save_path=PATH+"/diff_recon/"+rep+"/"
@@ -109,7 +110,7 @@ if __name__ == "__main__":
         model_dir=model_dir+model_files[1]
     
     itr=0
-    for iter in range(5):
+    for iter in range(1):
         
         while '.npy' in os.listdir(path_audio)[itr]:
             itr+=1
@@ -130,14 +131,14 @@ if __name__ == "__main__":
 #             imag=np.log(imag, dtype=np.float32)
 #             spectrogram=torch.from_numpy(imag)
 
-            audio, sr = T.load_wav(filename)
+            audio, sr = T.load_wav(wav_file)
             audio = torch.clamp(audio[0] / 32767.5, -1.0, 1.0)
 
             mel_args = {
-              'sample_rate': sr,
+              'sample_rate': FS,
               'win_length': WIN_LEN,
               'hop_length': HOP,
-              'n_fft': params.n_fft,
+              'n_fft': NFFT,
               'f_min': 20.0,
               'f_max': FS / 2.0,
               'n_mels': NMELS,
@@ -150,11 +151,40 @@ if __name__ == "__main__":
                 spectrogram = mel_spec_transform(audio)
                 spectrogram = 20 * torch.log10(torch.clamp(spectrogram, min=1e-5)) - 20
                 spectrogram = torch.clamp((spectrogram + 100) / 100, 0.0, 1.0)
-        else:
+        else:            
             aespeech=AEspeech(model='CAE',units=units,rep=rep)  
             mat=aespeech.compute_spectrograms(wav_file, plosives_only=0,volta=0)
             if torch.cuda.is_available():
                 mat=mat.cuda()
+
+#             audio, sr = T.load_wav(wav_file)
+#             audio = torch.clamp(audio[0] / 32767.5, -1.0, 1.0)
+
+#             mel_args = {
+#               'sample_rate': FS,
+#               'win_length': WIN_LEN,
+#               'hop_length': HOP,
+#               'n_fft': NFFT,
+#               'f_min': 20.0,
+#               'f_max': FS / 2.0,
+#               'n_mels': NMELS,
+#               'power': 1.0,
+#               'normalized': True,
+#           }
+#             mel_spec_transform = TT.MelSpectrogram(**mel_args)
+
+#             with torch.no_grad():
+#                 spectrogram = mel_spec_transform(audio)
+#                 spectrogram = 20 * torch.log10(torch.clamp(spectrogram, min=1e-5)) - 20
+#                 spectrogram = torch.clamp((spectrogram + 100) / 100, 0.0, 1.0)
+            
+#             mat=cv2.resize(spectrogram.detach().numpy(),(TIME_STEPS,INTERP_NMELS),interpolation=cv2.INTER_CUBIC)
+#             mat_new=torch.zeros(1,1,INTERP_NMELS,TIME_STEPS)
+#             mat_new[0,0,:,:]=torch.from_numpy(mat)
+
+#             if torch.cuda.is_available():
+#                 mat_new=mat_new.cuda()
+                
             to,bot=aespeech.AE.forward(mat)
             to=to.float()
             spectrogram=torch.zeros((to.shape[2],to.shape[0]*to.shape[3]))
@@ -165,6 +195,9 @@ if __name__ == "__main__":
                 spectrogram[:,init:endi]=to[fr,:,:,:]
                 init+=shift
                 endi+=shift
-        
+            
+            spectrogram = 20 * torch.log10(torch.clamp(spectrogram, min=1e-5)) - 20
+            spectrogram = torch.clamp((spectrogram + 100) / 100, 0.0, 1.0)
+            
         audio, sample_rate = diffwave_predict(spectrogram.float(), model_dir, ori=ori, rep=rep)
         torchaudio.save(save_path+ori+"_"+os.listdir(path_audio)[iter]+".wav", audio.cpu(),sample_rate=FS)

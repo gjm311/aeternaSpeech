@@ -305,10 +305,10 @@ if __name__=="__main__":
                 results['Data']['bin_class'][o_itr][hcId]=bin_class[(cpi+num_pdHc_tests//2)*num_utters:(cpi+(num_pdHc_tests//2)+1)*num_utters]
         
     
-    if 'wvlt' in reps:
-        results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")
-    else:
-        results.to_pickle(save_path+model+"_lateFusionResults.pkl")
+        if 'wvlt' in reps:
+            results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")
+        else:
+            results.to_pickle(save_path+model+"_lateFusionResults.pkl")
 
 
 

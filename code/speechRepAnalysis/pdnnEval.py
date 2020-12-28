@@ -510,7 +510,7 @@ if __name__=="__main__":
                 #Store raw scores for each test speaker (probability of PD and HC as output by dnn) for ROC.
 #                 tst_diffs=(y_test_pred[:,0]-y_test_pred[:,1]).cpu().detach().numpy().reshape(-1,1)
                 testResults[itr]['tstSpk_data'][tstId]=calibrator.predict_proba(np.array(y_pred_tag_curr).reshape(-1,1))
-                testResults[itr]['mfda_data'][tstId]=mfda_clf.predict(np.array(y_pred_tag_curr).reshape(-1,1))
+                testResults[itr]['mfda_data'][tstId]=mfda_clf.predict(np.ones(len(y_pred_tag_curr)).reshape(-1,1)*mfda_simp[tstId])
         
         
         y_pred_tag=np.array(y_pred_tag).reshape(-1,1)

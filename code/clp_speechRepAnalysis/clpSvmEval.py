@@ -15,7 +15,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.model_selection import GridSearchCV
 import joblib
 import collections
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScalerclp
 from sklearn.decomposition import PCA
 from sklearn.metrics import make_scorer
 from sklearn.metrics import roc_curve, auc

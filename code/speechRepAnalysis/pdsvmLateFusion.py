@@ -195,8 +195,14 @@ if __name__=="__main__":
     total_itrs=config['svm']['iterations']
     results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0, 'mFDA_spear_corr':{itr:{idx:{utter:0 for utter in UTTERS} for idx in np.arange(100)} for itr in range(total_itrs)},'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
     threshes=np.zeros((nreps,total_itrs*int(num_spks/num_pdHc_tests)))
-                                  
+    
+    res_path=PATH+"/pdSpanish/classResults/svm/"+mod+'_wvlt_lateFusionResults.pkl'
+    results=pd.read_pickle(res_path)
+    
     for o_itr in range(total_itrs):
+        if o_itr==0:
+            continue
+            
         pd_files=pdNames
         hc_files=hcNames
         predictions=pd.DataFrame(index=np.arange(100), columns=['predictions'])

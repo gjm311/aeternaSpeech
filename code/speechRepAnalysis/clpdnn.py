@@ -22,7 +22,6 @@ class clpdnn(nn.Module):
         self.drop=nn.Dropout(p=drp)
                 
     def forward(self, x):
-        M = x.shape[1]
         x=F.leaky_relu(self.fc1(x))
         x=self.drop(x)
         x=F.leaky_relu(self.fc2(x))

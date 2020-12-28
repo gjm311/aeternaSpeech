@@ -566,10 +566,10 @@ class AEspeech:
             nb_out=self.destandard(nb_out)
             
             bb_error=(bb_mat[:,0,:,:]-bb_out[:,0,:,:])**2
-            bb_error=torch.mean(bb_error,2).detach().numpy()
+            bb_error=torch.mean(bb_error,2).detach().cpu().numpy()
             bb_error=(bb_error-np.mean(bb_error))/np.std(bb_error)
             nb_error=(nb_mat[:,0,:,:]-nb_out[:,0,:,:])**2
-            nb_error=torch.mean(nb_error,2).detach().numpy()
+            nb_error=torch.mean(nb_error,2).detach().cpu().numpy()
             nb_error=(nb_error-np.mean(nb_error))/np.std(nb_error)
             error=np.concatenate((bb_error,nb_error),axis=1)
             
@@ -588,7 +588,7 @@ class AEspeech:
 
             to=self.destandard(to)
             mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
-            error=torch.mean(mat_error,2).detach().numpy()
+            error=torch.mean(mat_error,2).detach().cpu().numpy()
                
         if return_numpy:
             return error

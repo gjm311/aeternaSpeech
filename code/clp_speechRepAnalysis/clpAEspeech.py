@@ -35,7 +35,7 @@ import scipy.stats as st
 from phonetGM2 import Phonet
 import pdb
 
-with open("config.json") as f:
+with open("clpConfig.json") as f:
     data = f.read()
 config = json.loads(data)
 
@@ -180,7 +180,6 @@ class AEspeech:
         
         signal=signal-np.mean(signal)
         signal=signal/np.max(np.abs(signal))
-        
         
         init=0
         endi=int(FRAME_SIZE)
@@ -586,13 +585,13 @@ class AEspeech:
 
             if torch.cuda.is_available():
                 mat=mat.cuda()
-                
             to, bot=self.AE.forward(mat)
 
             to=self.destandard(to)
             mat_error=(mat[:,0,:,:]-to[:,0,:,:])**2
             error=torch.mean(mat_error,2).detach().numpy()
-               
+            error=(error-np.mean(error))/np.std(error)
+            
         if return_numpy:
             return error
         else:

@@ -51,7 +51,7 @@ def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
     feat_vecs=aespeech.compute_dynamic_features(wav_path)
     #     df1, df2=aespeech.compute_global_features(wav_path)
     
-    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
+    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'svmFeats.pickle', 'wb') as handle:
         pickle.dump(feat_vecs, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
     return feat_vecs
@@ -63,8 +63,8 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle'):
-        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
+    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'svmFeats.pickle'):
+        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'svmFeats.pickle', 'rb') as handle:
             feat_vecs = pickle.load(handle)
     else:
         feat_vecs=saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ)
@@ -80,15 +80,15 @@ def featAgg(model,reps,spk_path):
     for u_idx,utter in enumerate(UTTERS):
         clp_path=spk_path+'/'+utter+"/clp/"
         hc_path=spk_path+'/'+utter+"/hc/"   
-        clpNames=[name for name in os.listdir(clp_path) if '.wav' in name]
-        hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
-        allClpNames.extend([clpName for clpName in clpNames if clpName not in allClpNames])
-        allHcNames.extend([hcName for hcName in hcNames if hcName not in allHcNames])
+        clpNames=list(np.unique([name.split('_')[0] for name in os.listdir(clp_path) if '.wav' in name]))
+        hcNames=list(np.unique([name.split('_')[0] for name in os.listdir(hc_path) if '.wav' in name]))
+        allClpNames.extend(clpNames)
+        allHcNames.extend(hcNames)
     
-    clpNames_count=dict(collections.Counter([name.split('_')[0] for name in allClpNames]))
-    hcNames_count=dict(collections.Counter([name.split('_')[0] for name in allHcNames]))
-    clpNames=list(np.unique([name.split('_')[0] for name in allClpNames]))
-    hcNames=list(np.unique([name.split('_')[0] for name in allHcNames]))
+    clpNames_count=dict(collections.Counter([name for name in allClpNames]))
+    hcNames_count=dict(collections.Counter([name for name in allHcNames]))
+    clpNames=list(np.unique(allClpNames))
+    hcNames=list(np.unique(allHcNames))
     
     #aggregate all spk data per rep and store pca compressed data and ncs
     rep_dict={rep:{'data':[], 'ncs':0} for rep in reps}
@@ -238,6 +238,7 @@ if __name__=="__main__":
     for o_itr in range(total_itrs):
         clp_files=clpNames
         hc_files=hcNames
+        num_clpHc_tests=config['svm']['tst_spks']
         
         for itr in range(in_iters):
             #get test ids and data array index
@@ -248,27 +249,26 @@ if __name__=="__main__":
             hc_files=[hc for hc in hc_files if hc not in hcCurrs]
             
             prevs={nm:0 for nm in spkCurrs}
+            ntst_clp=0
+            ntst_hc=0
             for nItr,name in enumerate(spkCurrs):
                 if nItr==0:
                     prevs[name]=0
+                    ntst_clp+=name_count[name]
                 else:
+                    if 'CLP' in name:
+                        ntst_clp+=name_count[name]
+                    elif 'HC' in name:
+                        ntst_hc+=name_count[name]
                     for prev in spkCurrs[:nItr]:
                         prevs[name]+=name_count[prev]
-                        
-            if not hc_files:
-                hc_files=hcNames
-            if len(hc_files)<num_clpHc_tests//2:
-                left_ids=[lid for lid in np.arange(len(hcNames)) if hcNames[lid] not in hc_files]
-                add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
-                hc_files.extend(np.array(hcNames)[add_ids])
-                
-            ntst=prevs[spkCurrs[-1]]+name_count[spkCurrs[-1]]
-            ntr=pca_xAlls[0].shape[0]-ntst
                 
             #get trainee ids and data array index
             clpTrainees=[spk for spk in clpNames if spk not in clpCurrs]
             hcTrainees=[spk for spk in hcNames if spk not in hcCurrs]
-            trainees=clpTrainees+hcTrainees
+            rand_range=np.arange(len(hcTrainees))
+            random.shuffle(rand_range)
+            trainees=clpTrainees[rand_range]+hcTrainees
             
             trPrevs={nm:0 for nm in trainees}
             ntr_clp=0
@@ -285,12 +285,14 @@ if __name__=="__main__":
                     for prev in trainees[:nItr]:
                         trPrevs[name]+=name_count[prev]        
             
+            ntst=ntst_clp+ntst_hc
+            ntr=ntr_clp+ntr_hc
             diffs=np.zeros((nreps,ntr))
             tst_diffs=np.zeros((nreps,ntst))
             
             for nrep,(pca_xAll,ncs) in enumerate(zip(pca_xAlls,rncs)):
                 xTest=np.zeros((ntst,ncs))
-                yTest=np.concatenate((np.ones(ntst), np.zeros(ntst)))
+                yTest=np.concatenate((np.ones(ntst_clp), np.zeros(ntst_hc)))
                 xTrain=np.zeros((ntr,ncs))
                 yTrain=np.concatenate((np.ones((ntr_clp)), np.zeros((ntr_hc))))
                 for ii,tstName in enumerate(spkCurrs):
@@ -338,18 +340,27 @@ if __name__=="__main__":
             results['Data']['test_acc']+=tst_acc*(1/(int(num_spks/num_clpHc_tests)*total_itrs))
             results['Data']['class_report'][o_itr][itr]=class_report  
             for cpi,(clpName,hcName) in enumerate(zip(clpCurrs,hcCurrs)):   
-                if cpi == len(clpNames)-1:
-                    results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:]     
+                if cpi == len(clpCurrs)-1:
+                    results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:prevs[hcCurrs[0]]]     
                     results['Data']['bin_class'][o_itr][hcName]=bin_class[prevs[hcName]:]
                 else:
                     results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:prevs[clpCurrs[cpi+1]]]     
                     results['Data']['bin_class'][o_itr][hcName]=bin_class[prevs[hcName]:prevs[hcCurrs[cpi+1]]]
-           
+        
+            if len(clp_files)<num_clpHc_tests//2:
+                num_clpHc_tests=len(clp_files)*2
+
+            if not hc_files:
+                hc_files=hcNames
+            if len(hc_files)<num_clpHc_tests//2:
+                left_ids=[lid for lid in np.arange(len(hcNames)) if hcNames[lid] not in hc_files]
+                add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
+                hc_files.extend(np.array(hcNames)[add_ids])
     
-    if 'wvlt' in reps:
-        results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")
-    else:
-        results.to_pickle(save_path+model+"_lateFusionResults.pkl")
+        if 'wvlt' in reps:
+            results.to_pickle(save_path+model+"_wvlt_lateFusionResults.pkl")
+        else:
+            results.to_pickle(save_path+model+"_lateFusionResults.pkl")
 
 
 

@@ -50,7 +50,7 @@ def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
     feat_vecs=aespeech.compute_dynamic_features(wav_path)
     #     df1, df2=aespeech.compute_global_features(wav_path)
     
-    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
+    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'_svmFeats.pickle', 'wb') as handle:
         pickle.dump(feat_vecs, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
     return feat_vecs
@@ -62,15 +62,15 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle'):
-        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
+    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'_svmFeats.pickle'):
+        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'_svmFeats.pickle', 'rb') as handle:
             feat_vecs = pickle.load(handle)
     else:
         feat_vecs=saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ)
     
     return feat_vecs
        
-def featAgg(model,rep,spk_path,ef):
+def featAgg(model,rep,spk_path,num_feats,ef):
     global UTTERS
     
     allClpNames=[]
@@ -78,13 +78,13 @@ def featAgg(model,rep,spk_path,ef):
     for u_idx,utter in enumerate(UTTERS):
         clp_path=spk_path+'/'+utter+"/clp/"
         hc_path=spk_path+'/'+utter+"/hc/"   
-        clpNames=[name for name in os.listdir(clp_path) if '.wav' in name]
-        hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
-        allClpNames.extend([clpName for clpName in clpNames if clpName not in allClpNames])
-        allHcNames.extend([hcName for hcName in hcNames if hcName not in allHcNames])
+        clpNames=list(np.unique([name.split('_')[0] for name in os.listdir(clp_path) if '.wav' in name]))
+        hcNames=list(np.unique([name.split('_')[0] for name in os.listdir(hc_path) if '.wav' in name]))
+        allClpNames.extend(clpNames)
+        allHcNames.extend(hcNames)
     
-    clpNames_count=dict(collections.Counter([name.split('_')[0] for name in allClpNames]))
-    hcNames_count=dict(collections.Counter([name.split('_')[0] for name in allHcNames]))    
+    clpNames_count=dict(collections.Counter([name for name in allClpNames]))
+    hcNames_count=dict(collections.Counter([name for name in allHcNames]))
     spkdict={spk:[] for spk in ['clp','hc']}
     spkdict['clp']={clp:[] for clp in clpNames_count.keys()}
     spkdict['hc']={hc:[] for hc in hcNames_count.keys()}
@@ -92,8 +92,8 @@ def featAgg(model,rep,spk_path,ef):
         spkdict['clp'][name]=[]
     for itr,name in enumerate(hcNames_count.keys()):
         spkdict['hc'][name]=[]
-    clpNames=list(np.unique([name.split('_')[0] for name in allClpNames]))
-    hcNames=list(np.unique([name.split('_')[0] for name in allHcNames]))
+    clpNames=list(np.unique(allClpNames))
+    hcNames=list(np.unique(allHcNames))
     clpKeys=np.zeros(len(clpNames))
     hcKeys=np.zeros(len(hcNames))
     
@@ -135,27 +135,35 @@ def featAgg(model,rep,spk_path,ef):
                     new=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
                     spkdict['hc'][tr.split('_')[0]]=np.concatenate((spkdict['hc'][tr.split('_')[0]],np.expand_dims(new,axis=0)),axis=0)
         else:
+            clpFeats=getFeats(model,UNITS,reps[0],clp_path,utter,'clp')
+            hcFeats=getFeats(model,UNITS,reps[0],hc_path,utter,'hc')
+            clpAll=np.unique([c.split('_')[0] for c in np.unique(clpFeats['wav_file'])])
+            hcAll=np.unique([h.split('_')[0] for h in np.unique(hcFeats['wav_file'])])
+            clp_dic={cName.split('_')[0]:[] for cName in clpAll}
+            hc_dic={hName.split('_')[0]:[] for hName in hcAll}
+            
             for rIdx,rep in enumerate(reps):
                 clpFeats=getFeats(model,UNITS,rep,clp_path,utter,'clp')
                 hcFeats=getFeats(model,UNITS,rep,hc_path,utter,'hc')
-                clpAll=[c.split('_')[0] for c in np.unique(clpFeats['wav_file'])]
-                hcAll=[h.split('_')[0] for h in np.unique(hcFeats['wav_file'])]
+                
                 for ii,tr in enumerate(clpAll):
                     inner_ks=np.array([c.split('_')[0] for c in clpFeats['wav_file']])
-                    clpTrBns=clpFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
+                    clpTrBns=clpFeats['bottleneck'][np.where(inner_ks==tr)]
                     clpTrBns=np.array([np.mean(clpTrBns,axis=0),np.std(clpTrBns,axis=0),skew(clpTrBns,axis=0),kurtosis(clpTrBns,axis=0)])
-                    clpTrErrs=clpFeats['error'][np.where(inner_ks==tr.split('_')[0])]
+                    clpTrErrs=clpFeats['error'][np.where(inner_ks==tr)]
+                    
                     clpTrErrs=np.array([np.mean(clpTrErrs,axis=0),np.std(clpTrErrs,axis=0),skew(clpTrErrs,axis=0),kurtosis(clpTrErrs,axis=0)])
                     if rIdx==0:
-                        clpR1s[ii,:,:]=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                        clp_dic[tr.split('_')[0]]=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
                     elif len(reps)==3 and rIdx==1:
-                        clpR2s[ii,:,:]==np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                        old=clp_dic[tr.split('_')[0]]
+                        upd=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                        clp_dic[tr.split('_')[0]]=np.concatenate((old,upd),axis=0)
                     else:
-                        if len(reps)==3:
-                            old=np.concatenate((clpR1s[ii,:,:],clpR2s[ii,:,:]),axis=0)
-                        else:
-                            old=clpR1s[ii,:,:]
-                        new=np.concatenate((old,np.concatenate((clpTrBns,clpTrErrs),axis=1).T),axis=0)
+                        old=clp_dic[tr.split('_')[0]]
+                        upd=np.concatenate((clpTrBns,clpTrErrs),axis=1).T
+                        new=np.concatenate((old,upd),axis=0)
+                        
                         ovrall_idx=clpNames.index(tr.split('_')[0])
                         if clpKeys[ovrall_idx]==0:
                             spkdict['clp'][tr.split('_')[0]]=np.expand_dims(new,axis=0)
@@ -165,20 +173,21 @@ def featAgg(model,rep,spk_path,ef):
 
                 for ii,tr in enumerate(hcAll):
                     inner_ks=np.array([h.split('_')[0] for h in hcFeats['wav_file']])
-                    hcTrBns=hcFeats['bottleneck'][np.where(inner_ks==tr.split('_')[0])]
+                    hcTrBns=hcFeats['bottleneck'][np.where(inner_ks==tr)]
                     hcTrBns=np.array([np.mean(hcTrBns,axis=0),np.std(hcTrBns,axis=0),skew(hcTrBns,axis=0),kurtosis(hcTrBns,axis=0)])
-                    hcTrErrs=hcFeats['error'][np.where(inner_ks==tr.split('_')[0])]
+                    hcTrErrs=hcFeats['error'][np.where(inner_ks==tr)]
                     hcTrErrs=np.array([np.mean(hcTrErrs,axis=0),np.std(hcTrErrs,axis=0),skew(hcTrErrs,axis=0),kurtosis(hcTrErrs,axis=0)])
                     if rIdx==0:
-                        hcR1s[ii,:,:]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                        hc_dic[tr.split('_')[0]]=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
                     elif len(reps)==3 and rIdx==1:
-                        hcR2s[ii,:,:]==np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                        old=hc_dic[tr.split('_')[0]]
+                        upd=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                        hc_dic[tr.split('_')[0]]=np.concatenate((old,upd),axis=0)
                     else:
-                        if len(reps)==3:
-                            old=np.concatenate((hcR1s[ii,:,:],hcR2s[ii,:,:]),axis=0)
-                        else:
-                            old=hcR1s[ii,:,:]
-                        new=np.concatenate((old,np.concatenate((hcTrBns,hcTrErrs),axis=1).T),axis=0)
+                        old=hc_dic[tr.split('_')[0]]
+                        upd=np.concatenate((hcTrBns,hcTrErrs),axis=1).T
+                        new=np.concatenate((old,upd),axis=0)
+
                         ovrall_idx=hcNames.index(tr.split('_')[0])
                         if hcKeys[ovrall_idx]==0:
                             spkdict['hc'][tr.split('_')[0]]=np.expand_dims(new,axis=0)
@@ -258,18 +267,24 @@ if __name__=="__main__":
     ef=0
     if rep_typ in ['broadband','narrowband','wvlt']:
         rep=rep_typ
+        if rep=='wvlt':
+            num_feats=config['wavelet']['NBF']+UNITS
+        else:
+            num_feats=config['mel_spec']['INTERP_NMELS']+UNITS
     elif rep_typ=='mc_fuse':
-        feats=[]
+        num_feats=2*config['mel_spec']['INTERP_NMELS']+UNITS
         rep='mc_fuse'
     elif rep_typ=='early_fuse2':
+        num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)
         rep=['broadband','narrowband']
         ef=1
     elif rep_typ=='early_fuse3':
+        num_feats=2*(config['mel_spec']['INTERP_NMELS']+UNITS)+config['wavelet']['NBF']+UNITS
         rep=['broadband','narrowband','wvlt']
         ef=1
         
     #get compressed data, n_components, and file_name list 
-    spk_dict,clpNames,hcNames,name_count=featAgg(mod,rep,spk_path,ef)
+    spk_dict,clpNames,hcNames,name_count=featAgg(mod,rep,spk_path,num_feats,ef)
     pca_xAll,ncs=getDataset(spk_dict,clpNames,hcNames)
     spks=clpNames+hcNames
     num_spks=len(spks)
@@ -291,10 +306,18 @@ if __name__=="__main__":
     in_iters=config['svm']['in_iters']
     total_itrs=config['svm']['iterations']
     results=pd.DataFrame({'Data':{'train_acc':0,'test_acc':0,'bin_class':{itr:{} for itr in range(total_itrs)},'class_report':{itr:{} for itr in range(total_itrs)}}})
+    
+    if rep_typ=="early_fuse3":
+        res_path=PATH+"/clpSpanish/classResults/svm/"+mod+"_wvlt_earlyFusionResults.pkl"
+        results=pd.read_pickle(res_path)
                                       
     for o_itr in range(total_itrs):
+        if o_itr==0:
+            continue
+        
         clp_files=clpNames
         hc_files=hcNames
+        num_clpHc_tests=config['svm']['tst_spks']
         
         for itr in range(in_iters):
             clpCurrs=[clp_files[idx] for idx in random.sample(range(0,len(clp_files)),num_clpHc_tests//2)]
@@ -303,26 +326,25 @@ if __name__=="__main__":
             clp_files=[clp for clp in clp_files if clp not in clpCurrs]
             hc_files=[hc for hc in hc_files if hc not in hcCurrs]
             prevs={nm:0 for nm in spkCurrs}
+            ntst_clp=0
+            ntst_hc=0
             for nItr,name in enumerate(spkCurrs):
                 if nItr==0:
                     prevs[name]=0
+                    ntst_clp+=name_count[name]
                 else:
+                    if 'CLP' in name:
+                        ntst_clp+=name_count[name]
+                    elif 'HC' in name:
+                        ntst_hc+=name_count[name]
                     for prev in spkCurrs[:nItr]:
                         prevs[name]+=name_count[prev]
             
-            if not hc_files:
-                hc_files=hcNames
-            if len(hc_files)<num_clpHc_tests//2:
-                left_ids=[lid for lid in np.arange(len(hcNames)) if hcNames[lid] not in hc_files]
-                add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
-                hc_files.extend(np.array(hcNames)[add_ids])
-            
-            ntst=prevs[spkCurrs[-1]]+name_count[spkCurrs[-1]]
-            ntr=pca_xAll.shape[0]-ntst
-            
             clpTrainees=[spk for spk in clpNames if spk not in clpCurrs]
             hcTrainees=[spk for spk in hcNames if spk not in hcCurrs]
-            trainees=clpTrainees+hcTrainees
+            rand_range=np.arange(len(hcTrainees))
+            random.shuffle(rand_range)
+            trainees=list(np.array(clpTrainees)[rand_range])+hcTrainees
             
             trPrevs={nm:0 for nm in trainees}
             ntr_clp=0
@@ -338,9 +360,11 @@ if __name__=="__main__":
                         ntr_hc+=name_count[name]
                     for prev in trainees[:nItr]:
                         trPrevs[name]+=name_count[prev] 
-            
+                        
+            ntst=ntst_clp+ntst_hc
+            ntr=ntr_clp+ntr_hc 
             xTest=np.zeros((ntst,ncs))
-            yTest=np.concatenate((np.ones(ntst), np.zeros(ntst)))
+            yTest=np.concatenate((np.ones(ntst_clp), np.zeros(ntst_hc)))
             xTrain=np.zeros((ntr,ncs))
             yTrain=np.concatenate((np.ones((ntr_clp)), np.zeros((ntr_hc))))
             for ii,tstName in enumerate(spkCurrs):
@@ -388,20 +412,28 @@ if __name__=="__main__":
             results['Data']['test_acc']+=test_acc*(1/(int(num_spks/num_clpHc_tests)*total_itrs))
             results['Data']['class_report'][o_itr][itr]=class_report  
             for cpi,(clpName,hcName) in enumerate(zip(clpCurrs,hcCurrs)):   
-                if cpi == len(clpNames)-1:
-                    results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:]     
+                if cpi == len(clpCurrs)-1:
+                    results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:prevs[hcCurrs[0]]]     
                     results['Data']['bin_class'][o_itr][hcName]=bin_class[prevs[hcName]:]
                 else:
                     results['Data']['bin_class'][o_itr][clpName]=bin_class[prevs[clpName]:prevs[clpCurrs[cpi+1]]]     
                     results['Data']['bin_class'][o_itr][hcName]=bin_class[prevs[hcName]:prevs[hcCurrs[cpi+1]]]
+        
+            if len(clp_files)<num_clpHc_tests//2:
+                num_clpHc_tests=len(clp_files)*2
+
+            if not hc_files:
+                hc_files=hcNames
+            if len(hc_files)<num_clpHc_tests//2:
+                left_ids=[lid for lid in np.arange(len(hcNames)) if hcNames[lid] not in hc_files]
+                add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
+                hc_files.extend(np.array(hcNames)[add_ids])
                 
-                
-    if rep_typ=='mc_fuse':
-        results.to_pickle(save_path+mod+"_mcFusionResults.pkl")
-    if rep_typ in ['broadband','narrowband','wvlt']:
-        results.to_pickle(save_path+mod+'_'+rep_typ+"_aggResults.pkl")
-    if rep_typ=='early_fuse':
-        if 'wvlt' in reps:
+        if rep_typ=='mc_fuse':
+            results.to_pickle(save_path+mod+"_mcFusionResults.pkl")
+        if rep_typ in ['broadband','narrowband','wvlt']:
+            results.to_pickle(save_path+mod+'_'+rep_typ+"_aggResults.pkl")
+        if rep_typ=='early_fuse3':
             results.to_pickle(save_path+mod+"_wvlt_earlyFusionResults.pkl")
-        else:
+        if rep_typ=='early_fuse2':
             results.to_pickle(save_path+mod+"_earlyFusionResults.pkl")

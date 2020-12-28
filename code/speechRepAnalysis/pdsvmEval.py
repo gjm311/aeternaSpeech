@@ -203,11 +203,7 @@ if __name__=="__main__":
     
     mfda_path=PATH+"/pdSpanish/"
     mfdas=pd.read_csv(mfda_path+"metadata-Spanish_All.csv")['M-FDA'].values
-    up_lims=np.histogram(mfdas,bins=3)[1][1:]
     mfda_simp=mfdas
-    mfda_simp[np.where(mfda_simp<up_lims[0])]=0
-    mfda_simp[np.where(mfda_simp>up_lims[1])]=2
-    mfda_simp[np.where(mfda_simp>2)]=1
     
     #split data into training and test with multiple iterations
     num_pdHc_tests=config['svm']['tst_spks']#must be even (same # of test pds and hcs per iter)
@@ -226,7 +222,6 @@ if __name__=="__main__":
     for o_itr in range(total_itrs):
         pd_files=pdNames
         hc_files=hcNames        
-#         predictions=pd.DataFrame(index=np.arange(100), columns=UTTERS)
         
         for itr in range(int(num_spks/num_pdHc_tests)):
             pdCurrs=[pd_files[idx] for idx in random.sample(range(0,len(pd_files)),int(num_pdHc_tests/2))]

@@ -14,6 +14,7 @@ from clpdnn import clpdnn
 import toolbox.traintestsplit as tts
 from clpAEspeech import AEspeech
 import json
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import classification_report
 import argparse
@@ -32,18 +33,18 @@ REPS=['broadband','narrowband','wvlt']
 
 
 
-def saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ):
+def saveFeats(model,units,rep,wav_path,utter,save_path,spk_typ):
     global UNITS    
     # load the pretrained model with 256 units and get temp./freq. rep (spec or wvlt)
     aespeech=AEspeech(model=model,units=UNITS,rep=rep) 
     
     #compute the bottleneck and error-based features from a directory with wav files inside 
-    #(dynamic: one feture vector for each 500 ms frame)
+    #(dynamic: one feture vector for each 500/50 ms frame)
     #(global i.e. static: one feture vector per utterance)
     feat_vecs=aespeech.compute_dynamic_features(wav_path)
     #     df1, df2=aespeech.compute_global_features(wav_path)
     
-    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'wb') as handle:
+    with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'dnnFeats.pickle', 'wb') as handle:
         pickle.dump(feat_vecs, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
     return feat_vecs
@@ -55,8 +56,8 @@ def getFeats(model,units,rep,wav_path,utter,spk_typ):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle'):
-        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'Feats.pickle', 'rb') as handle:
+    if os.path.isfile(save_path+'/'+rep+'_'+model+'_'+spk_typ+'dnnFeats.pickle'):
+        with open(save_path+'/'+rep+'_'+model+'_'+spk_typ+'dnnFeats.pickle', 'rb') as handle:
             feat_vecs = pickle.load(handle)
     else:
         feat_vecs=saveFeats(model,units,rep,wav_path,utter,save_path, spk_typ)
@@ -73,12 +74,12 @@ def featAgg(mod,rep,spk_path, ef=0):
     for u_idx,utter in enumerate(UTTERS):
         clp_path=spk_path+'/'+utter+"/clp/"
         hc_path=spk_path+'/'+utter+"/hc/"   
-        clpNames=[name for name in os.listdir(clp_path) if '.wav' in name]
-        hcNames=[name for name in os.listdir(hc_path) if '.wav' in name]
-        allClpNames.extend([clpName for clpName in clpNames if clpName not in allClpNames])
-        allHcNames.extend([hcName for hcName in hcNames if hcName not in allHcNames])
-    clpNames=list(np.unique([name.split('_')[0] for name in allClpNames]))
-    hcNames=list(np.unique([name.split('_')[0] for name in allHcNames]))
+        clpNames=list(np.unique([name.split('_')[0] for name in os.listdir(clp_path) if '.wav' in name]))
+        hcNames=list(np.unique([name.split('_')[0] for name in os.listdir(hc_path) if '.wav' in name]))
+        allClpNames.extend(clpNames)
+        allHcNames.extend(hcNames)
+    clpNames=list(np.unique(allClpNames))
+    hcNames=list(np.unique(allHcNames))
     num_clps=len(clpNames)
     num_hcs=len(hcNames)
     spkNames=clpNames+hcNames
@@ -94,21 +95,21 @@ def featAgg(mod,rep,spk_path, ef=0):
     for u_idx,utter in enumerate(UTTERS):
         clp_path=spk_path+'/'+utter+"/clp/"
         hc_path=spk_path+'/'+utter+"/hc/"   
-        clpNames_curr=[name for name in os.listdir(clp_path) if '.wav' in name]
-        hcNames_curr=[name for name in os.listdir(hc_path) if '.wav' in name]
+        clpNames_curr=[name.split('_')[0] for name in os.listdir(clp_path) if '.wav' in name]
+        hcNames_curr=[name.split('_')[0] for name in os.listdir(hc_path) if '.wav' in name]
         clpNames_curr.sort()
         hcNames_curr.sort()
         clp_rng=np.arange(len(clpNames_curr))
         hc_rng=np.arange(len(hcNames_curr))
-        clpIds_curr=[spkNames.index(clpName.split('_')[0]) for clpName in clpNames_curr]
-        hcIds_curr=[spkNames.index(hcName.split('_')[0]) for hcName in hcNames_curr]
+        clpIds_curr=[spkNames.index(clpName) for clpName in clpNames_curr]
+        hcIds_curr=[spkNames.index(hcName) for hcName in hcNames_curr]
         
         if ef==0:
             clpFeats=getFeats(mod,UNITS,rep,clp_path,utter,'clp')
             hcFeats=getFeats(mod,UNITS,rep,hc_path,utter,'hc')
             for rItr,pItr in zip(clp_rng,clpIds_curr):
                 clpBns=clpFeats['bottleneck'][np.where(clpFeats['wav_file']==clpNames_curr[rItr])]
-                clpErrs=clpFeats['error'][np.where(clpFeats['wav_file']==clpName_currs[rItr])]
+                clpErrs=clpFeats['error'][np.where(clpFeats['wav_file']==clpNames_curr[rItr])]
                 if len(spkDict['clp'][pItr])==0:
                     spkDict['clp'][pItr]=np.concatenate((clpBns,clpErrs),axis=1)
                 else:
@@ -142,7 +143,6 @@ def featAgg(mod,rep,spk_path, ef=0):
     
     
     return spkDict, clpNames,hcNames
-
 
     
 class trainData(data.Dataset):
@@ -226,7 +226,7 @@ if __name__=="__main__":
         ef=1
     
     spkDict,clpNames,hcNames=featAgg(mod,rep,spk_path,ef)
-
+    
     clpNames.sort()
     hcNames.sort()
     spks=clpNames+hcNames
@@ -260,14 +260,7 @@ if __name__=="__main__":
         clp_files=[clp for clp in clp_files if clp not in clpCurrs]
         hcCurrs=[hc_files[idx] for idx in random.sample(range(0,len(hc_files)),num_clpHc_tests//2)]
         hc_files=[hc for hc in hc_files if hc not in hcCurrs]
-        
-        if not hc_files:
-            hc_files=hcNames
-        if len(hc_files)<num_clpHc_tests//2:
-            left_ids=[lid for lid in np.arange(len(hcNames)) if hcNames[lid] not in hc_files]
-            add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
-            hc_files.extend(np.array(hcNames)[add_ids])
-
+       
         clpIds=[spks.index(clpCurr) for clpCurr in clpCurrs]
         hcIds=[spks.index(hcCurr) for hcCurr in hcCurrs]
 
@@ -279,7 +272,6 @@ if __name__=="__main__":
             testDict['clp'][clpItr]=spkDict['clp'][clpItr]
         for hcItr in hcIds:
             testDict['hc'][hcItr]=spkDict['hc'][hcItr]
-            
         
         #Separate 'nv' (equal number of clp/hc) Validation speakers and get features
         notTestSpksCLP=[spk for spk in clpNames if spk not in clpCurrs]
@@ -287,7 +279,7 @@ if __name__=="__main__":
         validsCLP=[notTestSpksCLP[idx] for idx in random.sample(range(0,len(notTestSpksCLP)),nv//2)]
         validsHC=[notTestSpksHC[idx] for idx in random.sample(range(0,len(notTestSpksHC)),nv//2)]
         valids=validsCLP+validsHC
-        valIds=[clpNames.index(valid) for valid in validsCLP]+[hcNames.index(valid) for valid in validsHC]
+        valIds=[spks.index(valid) for valid in valids]
         valDict={num:[] for num in valIds}
 
         #getting bottle neck features and reconstruction error for validation speakers
@@ -301,17 +293,23 @@ if __name__=="__main__":
 
         trainResults_epo= pd.DataFrame({'train_loss':0.0, 'train_acc':0.0,'val_loss':0.0, 'val_acc':0.0}, index=np.arange(N_EPOCHS))
 
+        #enusre same number of train clps/hcs
+        num_pats_tr=num_spks-num_clpHc_tests-nv
+        notTestValSpksCLP=[spk for spk in clpNames if spk not in clpCurrs+validsCLP]
+        notTestValSpksHC=[spk for spk in hcNames if spk not in hcCurrs+validsHC]
+
+        clptr_rand_range=[spks.index(trid) for trid in notTestValSpksCLP]
+        hctr_rand_range=[spks.index(trid) for trid in notTestValSpksHC]
+        random.shuffle(clptr_rand_range)
+        random.shuffle(hctr_rand_range)
+        tr_rand_range=clptr_rand_range[:num_pats_tr//2]+hctr_rand_range[:num_pats_tr//2]
+        
         for epoch in range(N_EPOCHS):  
             train_loss=0.0
             train_acc=0.0
-            rand_range=np.arange(num_spks)
-            random.shuffle(rand_range)
             
             #TRAIN dnn for each speaker individually.             
-            for trainItr in rand_range:   
-                if trainItr in np.concatenate((clpIds,hcIds,valIds)):
-                    continue
-
+            for trainItr in tr_rand_range:   
                 if trainItr<num_clp:
                     trainIndc=1
                     trainOpp=0
@@ -327,7 +325,6 @@ if __name__=="__main__":
                 yTrain=np.vstack((np.ones((xTrain.shape[0]))*trainIndc,np.ones((xTrain.shape[0]))*trainOpp)).T
                 train_data=trainData(torch.FloatTensor(xTrain), torch.FloatTensor(yTrain))
                 train_loader=torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, num_workers=NUM_W)
-                start=time.time()
 
                 train_loss_curr=0.0
                 if len(train_loader)>0:
@@ -359,14 +356,14 @@ if __name__=="__main__":
                     train_loss+=train_loss_curr/len(train_loader.dataset)                           
 
             #Record train loss at end of each epoch (divide by number of train patients).
-            trainResults_epo.iloc[epoch]['train_loss']=train_loss/(len(rand_range)-(num_clpHc_tests+nv))
+            trainResults_epo.iloc[epoch]['train_loss']=train_loss/(len(tr_rand_range)-(num_clpHc_tests+nv))
     
             
             if np.mod(epoch+1,1)==0 or epoch==0:
                 #Iterate through all num_tr training patients and classify based off difference in probability of CLP/HC
                 num_tr=0
                 y_pred_tag=[]
-                for trainItr in rand_range:   
+                for trainItr in tr_rand_range:   
                     if trainItr in np.concatenate((clpIds,hcIds,valIds)):
                         continue
 
@@ -491,7 +488,7 @@ if __name__=="__main__":
                 test_loss_curr=0
                 y_pred_tag_curr=[]
                 xTest=dic[tstId]
-                xTest=(xTest-np.min(xTest))/(np.max(xTest)-np.min(xTest))
+                xTest=(xTest-np.min(xTest))/(np .max(xTest)-np.min(xTest))
                 test_data=testData(torch.FloatTensor(xTest))
                 test_loader=torch.utils.data.DataLoader(test_data, batch_size=BATCH_SIZE, num_workers=NUM_W, drop_last=False, shuffle=True)  
                 model.eval()
@@ -536,6 +533,16 @@ if __name__=="__main__":
             ))
           
         train_res.append(trainResults_epo)
+        
+        if (len(clp_files)<num_clpHc_tests//2):
+            num_clpHc_tests=len(clp_files)*2
+
+        if not hc_files:
+            hc_files=hcNames
+        if len(hc_files)<num_clpHc_tests//2:
+            left_ids=[lid for lid in np.arange(len(hcNames)) if hcNames[lid] not in hc_files]
+            add_ids=random.sample(left_ids, (num_clpHc_tests//2)-len(hc_files))
+            hc_files.extend(np.array(hcNames)[add_ids])
 
     trainResults=pd.concat(train_res,keys=(np.arange(itr+1)))
 
